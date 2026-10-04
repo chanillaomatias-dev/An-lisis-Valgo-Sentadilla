@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Análisis de Valgo Dinámico en Sentadilla Bipodal</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- MediaPipe Pose CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  <!-- Chart.js para curva cinemática -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <header>
+    <div class="header-container">
+      <div>
+        <h1>DKV Screening Tool | Valgo Dinámico de Rodilla</h1>
+        <p class="subtitle">Análisis Bioinstrumental del Movimiento Humano — Depto. de Kinesiología, Fac. Medicina, U. de Chile</p>
+      </div>
+      <div class="status-badge" id="camera-status">Cámara: Inactiva</div>
+    </div>
+  </header>
+
+  <main class="main-layout">
+    <!-- Panel Izquierdo: Video y Canvas -->
+    <section class="viewport-section">
+      <div class="video-container">
+        <video id="webcam" playsinline></video>
+        <canvas id="output_canvas"></canvas>
+      </div>
+      <div class="toolbar">
+        <button id="btn-toggle-cam" class="btn primary">Iniciar Cámara</button>
+        <button id="btn-switch-cam" class="btn secondary">Cambiar Cámara</button>
+        <button id="btn-record-rep" class="btn warning">Auto Repetición: ON</button>
+      </div>
+    </section>
+
+    <!-- Panel Derecho: Métricas y Gráficos -->
+    <section class="metrics-section">
+      <div class="card">
+        <h2>Ángulo Frontal (FPPA)</h2>
+        <div class="fppa-readouts">
+          <div class="metric-box">
+            <span class="label">Rodilla Izquierda</span>
+            <span class="value" id="fppa-left">0.0°</span>
+            <span class="badge" id="badge-left">Neutro</span>
+          </div>
+          <div class="metric-box">
+            <span class="label">Rodilla Derecha</span>
+            <span class="value" id="fppa-right">0.0°</span>
+            <span class="badge" id="badge-right">Neutro</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Desplazamiento Medial (Ratio Rodilla / Tobillo)</h2>
+        <div class="ratio-box">
+          <span class="label">Ratio Inter-rodilla / Inter-tobillo:</span>
+          <span class="value" id="ratio-val">100%</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Curva Cinemática en Vivo</h2>
+        <canvas id="kinematicsChart" height="140"></canvas>
+      </div>
+
+      <div class="card">
+        <h2>Historial de Repeticiones</h2>
+        <div class="table-container">
+          <table id="reps-table">
+            <thead>
+              <tr>
+                <th>Rep</th>
+                <th>Pico Izq (°)</th>
+                <th>Pico Der (°)</th>
+                <th>Riesgo DKV</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button id="btn-export-csv" class="btn small">Exportar CSV</button>
+        <button onclick="window.print()" class="btn small">Imprimir Informe</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
