@@ -8,7 +8,7 @@
   <!-- MediaPipe Pose CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
-  <!-- Chart.js para curva cinemática continua -->
+  <!-- Chart.js para cinemática continua -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -34,6 +34,7 @@
         <button id="btn-toggle-cam" class="btn primary">Iniciar Cámara</button>
         <button id="btn-single-squat" class="btn warning">🎯 Evaluar 1 Sentadilla</button>
         <button id="btn-reset-eval" class="btn secondary" style="display:none;">🔄 Nueva Evaluación</button>
+        <button id="btn-open-protocol" class="btn info">📋 Protocolo y Guía</button>
       </div>
     </section>
 
@@ -98,6 +99,45 @@
       </div>
     </section>
   </main>
+
+  <!-- Modal de Protocolo Estandarizado de Medición -->
+  <div id="protocol-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Protocolo Estandarizado de Captura (Screening DKV)</h2>
+        <button id="btn-close-modal" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-intro">Para garantizar un muestreo reproducible y sin sesgos de perspectiva, siga rigurosamente estos 4 estándares bioinstrumentales antes de evaluar:</p>
+        
+        <div class="protocol-grid">
+          <div class="protocol-item">
+            <span class="step-num">1</span>
+            <h4>Disposición de Cámara</h4>
+            <p>Ubique el dispositivo a <strong>2.0 - 2.5 metros</strong> del evaluado y a <strong>80 cm de altura</strong> (nivel de la pelvis). El plano frontal debe ser estrictamente perpendicular a la lente.</p>
+          </div>
+          <div class="protocol-item">
+            <span class="step-num">2</span>
+            <h4>Postura Inicial</h4>
+            <p>Pies alineados al <strong>ancho de las caderas</strong> con orientación anterior neutra (0°–10° de rotación externa). <strong>Brazos cruzados al pecho</strong> para no tapar los marcadores pélvicos.</p>
+          </div>
+          <div class="protocol-item">
+            <span class="step-num">3</span>
+            <h4>Cadencia y Descenso</h4>
+            <p>Al escuchar <em>"¡BAJA!"</em>, descienda de forma controlada en <strong>2 segundos</strong> hasta alcanzar mínimo <strong>60° de flexión de rodilla</strong>. No despegue los talones del suelo.</p>
+          </div>
+          <div class="protocol-item">
+            <span class="step-num">4</span>
+            <h4>Retorno y Registro</h4>
+            <p>Ascienda en <strong>1 a 2 segundos</strong> hasta la bipedestación completa. El sistema detectará automáticamente el nadir y congelará el pico máximo registrado.</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-confirm-protocol" class="btn primary">Entendido, Iniciar Prueba</button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
