@@ -9,24 +9,24 @@ const statusBadge = document.getElementById('camera-status');
 let cameraInstance = null;
 let repCount = 0;
 
-// Máquina de estados finitos
+// Máquina de estados
 let evalState = 'IDLE'; 
 let peakValgusLeft = 0;
 let peakValgusRight = 0;
 let nadirKneeDistRatio = 100;
 let baselineHipY = null;
 
-// Filtro Paso Bajo Exponencial (EMA) para suavizado de señal cinemática
+// Filtro de suavizado EMA (elimina temblores sin retrasar la respuesta)
 let smoothL = 0;
 let smoothR = 0;
-const EMA_ALPHA = 0.35;
+const EMA_ALPHA = 0.4;
 
-// Monitoreo de frecuencia de muestreo (FPS)
+// Monitoreo de FPS
 let lastFrameTime = performance.now();
 let frameCount = 0;
 let fps = 0;
 
-// Gráfica dinámica Chart.js
+// Configuración de Chart.js
 const ctxChart = document.getElementById('kinematicsChart').getContext('2d');
 const chart = new Chart(ctxChart, {
   type: 'line',
@@ -44,7 +44,6 @@ const chart = new Chart(ctxChart, {
   }
 });
 
-// Síntesis de voz para feedback auditivo
 function speakFeedback(text) {
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
@@ -55,40 +54,62 @@ function speakFeedback(text) {
   }
 }
 
-// Función bioinstrumental definitiva: Valgo vs Varo anatómico en plano frontal
-function calculateSignedFPPA(hip, knee, ankle, isLeftLeg, bodyCenterX) {
-  const v1 = { x: hip.x - knee.x, y: hip.y - knee.y };
-  const v2 = { x: ankle.x - knee.x, y: ankle.y - knee.y };
-  const dot = v1.x * v2.x + v1.y * v2.y;
-  const mag1 = Math.hypot(v1.x, v1.y);
-  const mag2 = Math.hypot(v2.x, v2.y);
-  if (mag1 === 0 || mag2 === 0) return { angle: 0, type: 'Neutro' };
-
-  const rad = Math.acos(Math.min(Math.max(dot / (mag1 * mag2), -1.0), 1.0));
-  const rawAngle = Math.abs(180 - (rad * (180 / Math.PI)));
-
-  // Proyección de la línea mecánica directa entre cadera y tobillo
-  const expectedKneeX = (hip.x + ankle.x) / 2;
-
-  // Distancia absoluta de la rodilla respecto al centro del cuerpo
-  const distKneeToCenter = Math.abs(knee.x - bodyCenterX);
-  const distLineToCenter = Math.abs(expectedKneeX - bodyCenterX);
-
-  // Si la rodilla está más cerca del centro del cuerpo que la línea mecánica -> Colapso Medial = VALGO
-  const isValgus = distKneeToCenter < distLineToCenter;
-
-  if (rawAngle < 3.0) {
-    return { angle: rawAngle, type: 'Neutro' };
-  } else if (isValgus) {
-    return { angle: rawAngle, type: 'Valgo' };
-  } else {
-    return { angle: rawAngle, type: 'Varo' };
+// CÁLCULO DIRECTO E INFALIBLE DE VALGO VS VARO
+// Compara la posición de la rodilla respecto a la línea entre su propia cadera y el centro entre tobillos
+function calculateKneeKinematics(hipL, kneeL, ankleL, hipR, kneeR, ankleR) {
+  // 1. Ángulo FPPA clásico (desviación de 180° en la línea cadera-rodilla-tobillo)
+  function getAngle(hip, knee, ankle) {
+    const v1 = { x: hip.x - knee.x, y: hip.y - knee.y };
+    const v2 = { x: ankle.x - knee.x, y: ankle.y - knee.y };
+    const dot = v1.x * v2.x + v1.y * v2.y;
+    const mag1 = Math.hypot(v1.x, v1.y);
+    const mag2 = Math.hypot(v2.x, v2.y);
+    if (mag1 === 0 || mag2 === 0) return 0;
+    const rad = Math.acos(Math.min(Math.max(dot / (mag1 * mag2), -1.0), 1.0));
+    return Math.abs(180 - (rad * (180 / Math.PI)));
   }
+
+  const rawAngleL = getAngle(hipL, kneeL, ankleL);
+  const rawAngleR = getAngle(hipR, kneeR, ankleR);
+
+  // 2. Discriminación de dirección física (adentro vs afuera)
+  // En MediaPipe, el Landmark 23 es Cadera Izquierda y 24 es Cadera Derecha del sujeto.
+  // Calculamos la distancia entre rodillas y la distancia entre caderas/tobillos
+  const kneeDistance = Math.abs(kneeL.x - kneeR.x);
+  const ankleDistance = Math.abs(ankleL.x - ankleR.x) || 1;
+  const hipDistance = Math.abs(hipL.x - hipR.x) || 1;
+
+  // Si la rodilla izquierda se mueve hacia la derecha (hacia la otra pierna), es VALGO
+  // La rodilla izquierda es medial si está más cerca de la rodilla opuesta que su cadera
+  // REGLA DIRECTA: Si la rodilla de ese lado invade el espacio medial hacia la otra rodilla:
+  const isMedialLeft = (hipL.x < hipR.x) ? (kneeL.x > hipL.x) : (kneeL.x < hipL.x);
+  const isMedialRight = (hipR.x > hipL.x) ? (kneeR.x < hipR.x) : (kneeR.x > hipR.x);
+
+  let typeL = 'Neutro';
+  if (rawAngleL >= 3.0) {
+    typeL = isMedialLeft ? 'Valgo' : 'Varo';
+  }
+
+  let typeR = 'Neutro';
+  if (rawAngleR >= 3.0) {
+    typeR = isMedialRight ? 'Valgo' : 'Varo';
+  }
+
+  // Comprobación de seguridad adicional:
+  // Si la distancia entre rodillas es menor que la distancia entre tobillos, OBLIGATORIAMENTE hay colapso en valgo
+  if (kneeDistance < ankleDistance * 0.95) {
+    if (rawAngleL >= 3.0) typeL = 'Valgo';
+    if (rawAngleR >= 3.0) typeR = 'Valgo';
+  }
+
+  return {
+    left: { angle: rawAngleL, type: typeL },
+    right: { angle: rawAngleR, type: typeR },
+    ratio: Math.round((kneeDistance / ankleDistance) * 100)
+  };
 }
 
-// Bucle principal de adquisición y procesamiento
 function onResults(results) {
-  // Cálculo de FPS
   frameCount++;
   const now = performance.now();
   if (now - lastFrameTime >= 1000) {
@@ -118,13 +139,12 @@ function onResults(results) {
     return;
   }
 
-  // Filtrado de calidad articular
   if ((lKnee.visibility && lKnee.visibility < 0.45) || (rKnee.visibility && rKnee.visibility < 0.45)) {
     canvasCtx.restore();
     return;
   }
 
-  // Dibujar puntos anatómicos
+  // Dibujar puntos
   [lHip, rHip, lKnee, rKnee, lAnkle, rAnkle].forEach(pt => {
     canvasCtx.beginPath();
     canvasCtx.arc(pt.x * canvasElement.width, pt.y * canvasElement.height, 6, 0, 2 * Math.PI);
@@ -132,7 +152,7 @@ function onResults(results) {
     canvasCtx.fill();
   });
 
-  // Conectar segmentos fémur y tibia
+  // Conectar segmentos
   canvasCtx.strokeStyle = '#38bdf8';
   canvasCtx.lineWidth = 3;
   const drawLine = (p1, p2) => {
@@ -144,39 +164,31 @@ function onResults(results) {
   drawLine(lHip, lKnee); drawLine(lKnee, lAnkle);
   drawLine(rHip, rKnee); drawLine(rKnee, rAnkle);
 
-  // Centro de masa pélvico
-  const bodyCenterX = (lHip.x + rHip.x) / 2;
+  // Ejecutar cálculo biomecánico blindado
+  const kinematics = calculateKneeKinematics(lHip, lKnee, lAnkle, rHip, rKnee, rAnkle);
 
-  // Cinemática
-  const rawL = calculateSignedFPPA(lHip, lKnee, lAnkle, true, bodyCenterX);
-  const rawR = calculateSignedFPPA(rHip, rKnee, rAnkle, false, bodyCenterX);
-
-  // Filtrado paso bajo (EMA)
-  smoothL = (EMA_ALPHA * rawL.angle) + ((1 - EMA_ALPHA) * smoothL);
-  smoothR = (EMA_ALPHA * rawR.angle) + ((1 - EMA_ALPHA) * smoothR);
+  // Filtro EMA para suavizar
+  smoothL = (EMA_ALPHA * kinematics.left.angle) + ((1 - EMA_ALPHA) * smoothL);
+  smoothR = (EMA_ALPHA * kinematics.right.angle) + ((1 - EMA_ALPHA) * smoothR);
 
   const displayAngleL = parseFloat(smoothL.toFixed(1));
   const displayAngleR = parseFloat(smoothR.toFixed(1));
 
-  document.getElementById('fppa-left').innerText = `${displayAngleL}° (${rawL.type})`;
-  document.getElementById('fppa-right').innerText = `${displayAngleR}° (${rawR.type})`;
-  updateBadge('badge-left', { angle: displayAngleL, type: rawL.type });
-  updateBadge('badge-right', { angle: displayAngleR, type: rawR.type });
+  document.getElementById('fppa-left').innerText = `${displayAngleL}° (${kinematics.left.type})`;
+  document.getElementById('fppa-right').innerText = `${displayAngleR}° (${kinematics.right.type})`;
+  updateBadge('badge-left', { angle: displayAngleL, type: kinematics.left.type });
+  updateBadge('badge-right', { angle: displayAngleR, type: kinematics.right.type });
 
-  // Ratio Inter-rodilla / Inter-tobillo
-  const kneeDist = Math.hypot(lKnee.x - rKnee.x, lKnee.y - rKnee.y);
-  const ankleDist = Math.hypot(lAnkle.x - rAnkle.x, lAnkle.y - rAnkle.y);
-  const currentRatio = Math.round((kneeDist / (ankleDist || 1)) * 100);
-  document.getElementById('ratio-val').innerText = `${currentRatio}%`;
+  document.getElementById('ratio-val').innerText = `${kinematics.ratio}%`;
 
-  // Gráfica continua (solo registra ángulo si es Valgo)
+  // Gráfica dinámica
   chart.data.datasets[0].data.shift();
-  chart.data.datasets[0].data.push(rawL.type === 'Valgo' ? displayAngleL : 0);
+  chart.data.datasets[0].data.push(kinematics.left.type === 'Valgo' ? displayAngleL : 0);
   chart.data.datasets[1].data.shift();
-  chart.data.datasets[1].data.push(rawR.type === 'Valgo' ? displayAngleR : 0);
+  chart.data.datasets[1].data.push(kinematics.right.type === 'Valgo' ? displayAngleR : 0);
   chart.update();
 
-  // Segmentación temporal de repetición
+  // Detección automática del nadir de sentadilla
   const currentHipY = (lHip.y + rHip.y) / 2;
 
   if (evalState === 'WAIT_DESCENT') {
@@ -186,11 +198,11 @@ function onResults(results) {
       showNotice('¡Descendiendo! Controla las rodillas...');
     }
   } else if (evalState === 'RECORDING') {
-    if (rawL.type === 'Valgo' && displayAngleL > peakValgusLeft) peakValgusLeft = displayAngleL;
-    if (rawR.type === 'Valgo' && displayAngleR > peakValgusRight) peakValgusRight = displayAngleR;
-    if (currentRatio < nadirKneeDistRatio) nadirKneeDistRatio = currentRatio;
+    if (kinematics.left.type === 'Valgo' && displayAngleL > peakValgusLeft) peakValgusLeft = displayAngleL;
+    if (kinematics.right.type === 'Valgo' && displayAngleR > peakValgusRight) peakValgusRight = displayAngleR;
+    if (kinematics.ratio < nadirKneeDistRatio) nadirKneeDistRatio = kinematics.ratio;
 
-    // Retorno a la posición erguida
+    // Retorno a posición erguida
     if (currentHipY < baselineHipY + 0.03) {
       evalState = 'FINISHED';
       repCount++;
@@ -205,7 +217,6 @@ function onResults(results) {
       updateBadge('badge-left', { angle: peakValgusLeft, type: 'Valgo' });
       updateBadge('badge-right', { angle: peakValgusRight, type: 'Valgo' });
 
-      // Generar reporte clínico y emitir síntesis de voz
       generateClinicalReport(peakValgusLeft, peakValgusRight);
     }
   }
@@ -256,13 +267,13 @@ function generateClinicalReport(maxL, maxR) {
     clinicalCard.style.borderLeftColor = 'var(--warning)';
     clinFinding.innerHTML = `<span style="color: var(--warning); font-weight: bold;">Valgo Dinámico Moderado (${peak.toFixed(1)}° pico)</span>`;
     clinRisk.innerText = "Compensación articular moderada. Mayor susceptibilidad a dolor femoropatelar y fatiga precoz de estabilizadores pélvicos.";
-    clinRec.innerText = "Fortalecimiento excéntrico de cuádriceps alineado al 2do ortejo y activación abductora de cadera con banda elástica.";
+    clinRec.innerText = "Fortalecimiento excéntrico de cuádriceps alineado al segundo ortejo y activación abductora de cadera con banda elástica.";
     voiceMsg = "Valgo dinámico moderado detectado. Se sugiere corrección de la alineación de rodillas.";
   } else {
     clinicalCard.style.borderLeftColor = 'var(--success)';
     clinFinding.innerHTML = `<span style="color: var(--success); font-weight: bold;">Alineación Fisiológica Neutra (${peak.toFixed(1)}° pico)</span>`;
     clinRisk.innerText = "Cinemática frontal controlada. Vectores de carga fémoro-tibiales dentro de rangos fisiológicos óptimos.";
-    clinRec.innerText = "Patrón motor adecuado. Progresar hacia sentadilla monopodal o ejercicios con desaceleración.";
+    clinRec.innerText = "Patrón motor adecuado. Progresar hacia sentadilla monopodal o ejercicios con aceleración/desaceleración.";
     voiceMsg = "Excelente ejecución. Alineación biomecánica neutra.";
   }
 
@@ -277,7 +288,7 @@ function addRepToTable(rep, maxL, maxR) {
   row.innerHTML = `<td>#${rep}</td><td>${maxL.toFixed(1)}°</td><td>${maxR.toFixed(1)}°</td><td><strong>${risk}</strong></td>`;
 }
 
-// Botón de 1 Sentadilla con cuenta regresiva
+// Botón de evaluación
 btnSingleSquat.addEventListener('click', () => {
   if (!cameraInstance) {
     alert('Primero debes presionar "Iniciar Cámara".');
@@ -318,19 +329,19 @@ btnReset.addEventListener('click', () => {
   document.getElementById('ratio-val').innerText = '100%';
 });
 
-// Inicialización de MediaPipe Pose
+// MediaPipe Pose
 const pose = new Pose({
   locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
 });
 pose.setOptions({
-  modelComplexity: 2, // Modelo Heavy de máxima resolución espacial
+  modelComplexity: 2,
   smoothLandmarks: true,
   minDetectionConfidence: 0.5,
   minTrackingConfidence: 0.5,
 });
 pose.onResults(onResults);
 
-// Encendido de cámara
+// Botón cámara
 document.getElementById('btn-toggle-cam').addEventListener('click', async () => {
   if (!cameraInstance) {
     cameraInstance = new Camera(videoElement, {
