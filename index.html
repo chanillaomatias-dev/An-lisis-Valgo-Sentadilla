@@ -23,7 +23,7 @@
   </header>
 
   <main class="main-layout">
-    <!-- Panel Izquierdo: Captura y Video -->
+    <!-- Panel Izquierdo: Captura y Video en Vivo -->
     <section class="viewport-section">
       <div class="video-container">
         <video id="webcam" playsinline></video>
@@ -34,107 +34,160 @@
         <button id="btn-toggle-cam" class="btn primary">Iniciar Cámara</button>
         <button id="btn-single-squat" class="btn warning">🎯 Evaluar 1 Sentadilla</button>
         <button id="btn-reset-eval" class="btn secondary" style="display:none;">🔄 Nueva Evaluación</button>
-        <button id="btn-open-protocol" class="btn info">📋 Protocolo y Guía</button>
       </div>
-    </section>
 
-    <!-- Panel Derecho: Métricas, Gráfica y Resultados Clínicos -->
-    <section class="metrics-section">
-      <div class="card">
-        <h2>Ángulo Frontal (FPPA Bilateral)</h2>
+      <!-- Métricas en vivo mientras se realiza el movimiento -->
+      <div class="card live-hud">
+        <h2>Monitoreo en Tiempo Real</h2>
         <div class="fppa-readouts">
           <div class="metric-box">
-            <span class="label">Rodilla Izquierda</span>
+            <span class="label">FPPA Rodilla Izquierda</span>
             <span class="value" id="fppa-left">0.0°</span>
             <span class="badge" id="badge-left">Neutro</span>
           </div>
           <div class="metric-box">
-            <span class="label">Rodilla Derecha</span>
+            <span class="label">FPPA Rodilla Derecha</span>
             <span class="value" id="fppa-right">0.0°</span>
             <span class="badge" id="badge-right">Neutro</span>
           </div>
         </div>
-      </div>
-
-      <div class="card">
-        <h2>Desplazamiento Medial (Ratio Rodilla / Tobillo)</h2>
-        <div class="ratio-box">
+        <div class="ratio-box" style="margin-top: 10px;">
           <span class="label">Ratio Inter-rodilla / Inter-tobillo:</span>
           <span class="value" id="ratio-val">100%</span>
         </div>
       </div>
 
       <div class="card">
-        <h2>Curva Cinemática en Tiempo Real</h2>
-        <canvas id="kinematicsChart" height="130"></canvas>
+        <h2>Curva Cinemática Continua</h2>
+        <canvas id="kinematicsChart" height="120"></canvas>
       </div>
+    </section>
 
-      <!-- Tarjeta Clínica Automatizada de Riesgo -->
-      <div class="card" id="clinical-card" style="display: none; border-left: 4px solid var(--cyan-accent);">
-        <h2>Interpretación Clínica & Tamizaje</h2>
-        <p style="font-size: 0.95rem; margin-bottom: 6px;"><strong>Hallazgo:</strong> <span id="clin-finding">--</span></p>
-        <p style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px;"><strong>Riesgo asociado:</strong> <span id="clin-risk">--</span></p>
-        <div style="background: rgba(15, 23, 42, 0.6); padding: 8px; border-radius: 6px; font-size: 0.8rem; border: 1px solid var(--border);">
-          <strong>Sugerencia de intervención kinesiológica:</strong>
-          <p id="clin-recommendation" style="margin-top: 4px; color: var(--text-muted);">--</p>
+    <!-- Panel Derecho: INFORME CLÍNICO Y BIOINSTRUMENTAL INTEGRADO -->
+    <section class="report-section">
+      <div class="card report-card">
+        <div class="report-header">
+          <h2>Informe Biomecánico de Evaluación</h2>
+          <span class="report-badge" id="report-status-badge">Pendiente de Ejecución</span>
         </div>
-      </div>
 
-      <div class="card">
-        <h2>Historial de Repeticiones</h2>
-        <div class="table-container">
-          <table id="reps-table">
-            <thead>
-              <tr>
-                <th>Rep</th>
-                <th>Pico Izq (°)</th>
-                <th>Pico Der (°)</th>
-                <th>Riesgo DKV</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+        <p class="report-placeholder" id="report-placeholder-text">
+          Presione <strong>"🎯 Evaluar 1 Sentadilla"</strong>, siga las instrucciones de posicionamiento en pantalla y realice el gesto para obtener el análisis cinemático completo y las sugerencias kinesiológicas.
+        </p>
+
+        <div id="report-content" style="display: none;">
+          <!-- Bloque 1: Resumen Cuantitativo del Nadir -->
+          <div class="report-block">
+            <h3>1. Variables Cinemáticas en el Nadir (Máxima Flexión)</h3>
+            <div class="report-grid-3">
+              <div class="report-stat">
+                <span class="stat-label">Pico Valgo Izquierdo</span>
+                <span class="stat-val" id="rep-val-left">--</span>
+              </div>
+              <div class="report-stat">
+                <span class="stat-label">Pico Valgo Derecho</span>
+                <span class="stat-val" id="rep-val-right">--</span>
+              </div>
+              <div class="report-stat">
+                <span class="stat-label">Índice K/A Mínimo</span>
+                <span class="stat-val" id="rep-val-ratio">--</span>
+              </div>
+            </div>
+            <div class="asymmetry-box" id="rep-asymmetry">
+              Asimetría fémoro-tibial: --
+            </div>
+          </div>
+
+          <!-- Bloque 2: Clasificación de Riesgo Funcional -->
+          <div class="report-block">
+            <h3>2. Estratificación de Riesgo Lesional</h3>
+            <div class="risk-indicator-box" id="risk-banner">
+              <h4 id="risk-title">--</h4>
+              <p id="risk-description">--</p>
+            </div>
+          </div>
+
+          <!-- Bloque 3: Mecanismo Lesional y Carga Articular -->
+          <div class="report-block">
+            <h3>3. Mecánica Lesional Asociada</h3>
+            <div class="clinical-details-list">
+              <div class="detail-item">
+                <strong>Ligamento Cruzado Anterior (LCA):</strong>
+                <p id="detail-lca">--</p>
+              </div>
+              <div class="detail-item">
+                <strong>Articulación Femoropatelar (SDFP):</strong>
+                <p id="detail-patella">--</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bloque 4: Sugerencias de Abordaje Kinesiológico -->
+          <div class="report-block">
+            <h3>4. Recomendación de Intervención Kinesiológica</h3>
+            <div class="intervention-box">
+              <ul id="intervention-list"></ul>
+            </div>
+          </div>
+
+          <!-- Bloque 5: Historial de la Sesión -->
+          <div class="report-block">
+            <h3>5. Registro de Repeticiones en la Sesión</h3>
+            <div class="table-container">
+              <table id="reps-table">
+                <thead>
+                  <tr>
+                    <th>Rep</th>
+                    <th>Pico Izq</th>
+                    <th>Pico Der</th>
+                    <th>Ratio K/A</th>
+                    <th>Nivel de Riesgo</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
         </div>
-        <button onclick="window.print()" class="btn small">Imprimir Informe / Guardar PDF</button>
       </div>
     </section>
   </main>
 
-  <!-- Modal de Protocolo Estandarizado de Medición -->
+  <!-- Modal de Instrucciones que aparece al presionar Evaluar -->
   <div id="protocol-modal" class="modal-overlay">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>Protocolo Estandarizado de Captura (Screening DKV)</h2>
+        <h2>Instrucciones para la Medición</h2>
         <button id="btn-close-modal" class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
-        <p class="modal-intro">Para garantizar un muestreo reproducible y sin sesgos de perspectiva, siga rigurosamente estos 4 estándares bioinstrumentales antes de evaluar:</p>
+        <p class="modal-intro">Para que el análisis sea válido y reproducible, colócate en la siguiente posición antes de empezar:</p>
         
         <div class="protocol-grid">
           <div class="protocol-item">
             <span class="step-num">1</span>
-            <h4>Disposición de Cámara</h4>
-            <p>Ubique el dispositivo a <strong>2.0 - 2.5 metros</strong> del evaluado y a <strong>80 cm de altura</strong> (nivel de la pelvis). El plano frontal debe ser estrictamente perpendicular a la lente.</p>
+            <h4>Distancia y Encuadre</h4>
+            <p>Aléjate a <strong>2.0 - 2.5 metros</strong> de la cámara. Deben verse completos tus <strong>pies, rodillas y caderas</strong>.</p>
           </div>
           <div class="protocol-item">
             <span class="step-num">2</span>
-            <h4>Postura Inicial</h4>
-            <p>Pies alineados al <strong>ancho de las caderas</strong> con orientación anterior neutra (0°–10° de rotación externa). <strong>Brazos cruzados al pecho</strong> para no tapar los marcadores pélvicos.</p>
+            <h4>Postura de Brazos</h4>
+            <p>Cruza los <strong>brazos sobre el pecho</strong>. Si dejas los brazos sueltos, taparán los marcadores de la cadera.</p>
           </div>
           <div class="protocol-item">
             <span class="step-num">3</span>
-            <h4>Cadencia y Descenso</h4>
-            <p>Al escuchar <em>"¡BAJA!"</em>, descienda de forma controlada en <strong>2 segundos</strong> hasta alcanzar mínimo <strong>60° de flexión de rodilla</strong>. No despegue los talones del suelo.</p>
+            <h4>Pies y Bajada</h4>
+            <p>Pies separados al <strong>ancho de tus hombros</strong>. Al terminar la cuenta regresiva, baja en 2 segundos hasta <strong>90° o tu flexión máxima</strong> sin levantar los talones.</p>
           </div>
           <div class="protocol-item">
             <span class="step-num">4</span>
-            <h4>Retorno y Registro</h4>
-            <p>Ascienda en <strong>1 a 2 segundos</strong> hasta la bipedestación completa. El sistema detectará automáticamente el nadir y congelará el pico máximo registrado.</p>
+            <h4>Subida</h4>
+            <p>Vuelve a subir a la posición erguida. La aplicación <strong>congelará tu resultado</strong> y mostrará el informe automáticamente.</p>
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button id="btn-confirm-protocol" class="btn primary">Entendido, Iniciar Prueba</button>
+        <button id="btn-confirm-protocol" class="btn warning">¡Listo, empezar cuenta regresiva!</button>
       </div>
     </div>
   </div>
