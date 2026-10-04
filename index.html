@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Análisis de Valgo Dinámico en Sentadilla Bipodal</title>
+  <title>Análisis de Valgo Dinámico en Sentadilla Bipodal (DKV Tool)</title>
   <link rel="stylesheet" href="style.css" />
   <!-- MediaPipe Pose CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
-  <!-- Chart.js para curva cinemática -->
+  <!-- Chart.js para cinemática continua -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -23,12 +23,12 @@
   </header>
 
   <main class="main-layout">
-    <!-- Panel Izquierdo: Video y Canvas -->
+    <!-- Panel Izquierdo: Captura y Video -->
     <section class="viewport-section">
       <div class="video-container">
         <video id="webcam" playsinline></video>
         <canvas id="output_canvas"></canvas>
-        <div id="countdown-overlay" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:4rem; font-weight:900; color:#06b6d4; text-shadow:0 0 20px rgba(0,0,0,0.9); pointer-events:none; text-align:center; z-index:10;"></div>
+        <div id="countdown-overlay"></div>
       </div>
       <div class="toolbar">
         <button id="btn-toggle-cam" class="btn primary">Iniciar Cámara</button>
@@ -37,10 +37,10 @@
       </div>
     </section>
 
-    <!-- Panel Derecho: Métricas y Gráficos -->
+    <!-- Panel Derecho: Métricas, Gráfica y Resultados Clínicos -->
     <section class="metrics-section">
       <div class="card">
-        <h2>Ángulo Frontal (FPPA)</h2>
+        <h2>Ángulo Frontal (FPPA Bilateral)</h2>
         <div class="fppa-readouts">
           <div class="metric-box">
             <span class="label">Rodilla Izquierda</span>
@@ -64,8 +64,19 @@
       </div>
 
       <div class="card">
-        <h2>Curva Cinemática en Vivo</h2>
-        <canvas id="kinematicsChart" height="140"></canvas>
+        <h2>Curva Cinemática en Tiempo Real</h2>
+        <canvas id="kinematicsChart" height="130"></canvas>
+      </div>
+
+      <!-- Tarjeta Clínica Automatizada de Riesgo -->
+      <div class="card" id="clinical-card" style="display: none; border-left: 4px solid var(--cyan-accent);">
+        <h2>Interpretación Clínica & Tamizaje</h2>
+        <p style="font-size: 0.95rem; margin-bottom: 6px;"><strong>Hallazgo:</strong> <span id="clin-finding">--</span></p>
+        <p style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px;"><strong>Riesgo asociado:</strong> <span id="clin-risk">--</span></p>
+        <div style="background: rgba(15, 23, 42, 0.6); padding: 8px; border-radius: 6px; font-size: 0.8rem; border: 1px solid var(--border);">
+          <strong>Sugerencia de intervención kinesiológica:</strong>
+          <p id="clin-recommendation" style="margin-top: 4px; color: var(--text-muted);">--</p>
+        </div>
       </div>
 
       <div class="card">
@@ -83,7 +94,7 @@
             <tbody></tbody>
           </table>
         </div>
-        <button onclick="window.print()" class="btn small">Imprimir Informe</button>
+        <button onclick="window.print()" class="btn small">Imprimir Informe / Guardar PDF</button>
       </div>
     </section>
   </main>
