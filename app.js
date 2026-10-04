@@ -6,33 +6,37 @@ const btnSingleSquat = document.getElementById('btn-single-squat');
 const btnReset = document.getElementById('btn-reset-eval');
 const statusBadge = document.getElementById('camera-status');
 
-// Elementos del Modal de Protocolo
+// Elementos del Modal de Instrucciones
 const protocolModal = document.getElementById('protocol-modal');
-const btnOpenProtocol = document.getElementById('btn-open-protocol');
 const btnCloseModal = document.getElementById('btn-close-modal');
 const btnConfirmProtocol = document.getElementById('btn-confirm-protocol');
+
+// Elementos del Informe Integrado
+const reportPlaceholder = document.getElementById('report-placeholder-text');
+const reportContent = document.getElementById('report-content');
+const reportStatusBadge = document.getElementById('report-status-badge');
 
 let cameraInstance = null;
 let repCount = 0;
 
-// Máquina de estados: 'IDLE' | 'COUNTDOWN' | 'WAIT_DESCENT' | 'RECORDING' | 'FINISHED'
+// Máquina de estados
 let evalState = 'IDLE'; 
 let peakValgusLeft = 0;
 let peakValgusRight = 0;
 let nadirKneeDistRatio = 100;
 let baselineHipY = null;
 
-// Filtro Paso Bajo Exponencial (EMA) para suavizado cinemático
+// Filtro EMA
 let smoothL = 0;
 let smoothR = 0;
 const EMA_ALPHA = 0.4;
 
-// Monitoreo de frecuencia de muestreo (FPS)
+// FPS
 let lastFrameTime = performance.now();
 let frameCount = 0;
 let fps = 0;
 
-// Configuración de Chart.js
+// Gráfica Chart.js
 const ctxChart = document.getElementById('kinematicsChart').getContext('2d');
 const chart = new Chart(ctxChart, {
   type: 'line',
@@ -50,7 +54,6 @@ const chart = new Chart(ctxChart, {
   }
 });
 
-// Síntesis de voz para instrucciones y feedback auditivo
 function speakFeedback(text) {
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
@@ -61,7 +64,7 @@ function speakFeedback(text) {
   }
 }
 
-// Discriminación directa e infalible de Valgo vs Varo
+// Cálculo Biomecánico: FPPA y discriminación anatómica exacta
 function calculateKneeKinematics(hipL, kneeL, ankleL, hipR, kneeR, ankleR) {
   function getAngle(hip, knee, ankle) {
     const v1 = { x: hip.x - knee.x, y: hip.y - knee.y };
@@ -84,16 +87,11 @@ function calculateKneeKinematics(hipL, kneeL, ankleL, hipR, kneeR, ankleR) {
   const isMedialRight = (hipR.x > hipL.x) ? (kneeR.x < hipR.x) : (kneeR.x > hipR.x);
 
   let typeL = 'Neutro';
-  if (rawAngleL >= 3.0) {
-    typeL = isMedialLeft ? 'Valgo' : 'Varo';
-  }
+  if (rawAngleL >= 3.0) typeL = isMedialLeft ? 'Valgo' : 'Varo';
 
   let typeR = 'Neutro';
-  if (rawAngleR >= 3.0) {
-    typeR = isMedialRight ? 'Valgo' : 'Varo';
-  }
+  if (rawAngleR >= 3.0) typeR = isMedialRight ? 'Valgo' : 'Varo';
 
-  // Si la distancia inter-rodilla es menor al 95% de la inter-tobillo, es colapso en valgo
   if (kneeDistance < ankleDistance * 0.95) {
     if (rawAngleL >= 3.0) typeL = 'Valgo';
     if (rawAngleR >= 3.0) typeR = 'Valgo';
@@ -106,7 +104,6 @@ function calculateKneeKinematics(hipL, kneeL, ankleL, hipR, kneeR, ankleR) {
   };
 }
 
-// Bucle continuo de adquisición y renderizado
 function onResults(results) {
   frameCount++;
   const now = performance.now();
@@ -142,7 +139,7 @@ function onResults(results) {
     return;
   }
 
-  // Dibujar puntos
+  // Dibujar articulaciones
   [lHip, rHip, lKnee, rKnee, lAnkle, rAnkle].forEach(pt => {
     canvasCtx.beginPath();
     canvasCtx.arc(pt.x * canvasElement.width, pt.y * canvasElement.height, 6, 0, 2 * Math.PI);
@@ -150,7 +147,6 @@ function onResults(results) {
     canvasCtx.fill();
   });
 
-  // Conectar segmentos
   canvasCtx.strokeStyle = '#38bdf8';
   canvasCtx.lineWidth = 3;
   const drawLine = (p1, p2) => {
@@ -164,7 +160,6 @@ function onResults(results) {
 
   const kinematics = calculateKneeKinematics(lHip, lKnee, lAnkle, rHip, rKnee, rAnkle);
 
-  // Filtrado EMA
   smoothL = (EMA_ALPHA * kinematics.left.angle) + ((1 - EMA_ALPHA) * smoothL);
   smoothR = (EMA_ALPHA * kinematics.right.angle) + ((1 - EMA_ALPHA) * smoothR);
 
@@ -175,17 +170,14 @@ function onResults(results) {
   document.getElementById('fppa-right').innerText = `${displayAngleR}° (${kinematics.right.type})`;
   updateBadge('badge-left', { angle: displayAngleL, type: kinematics.left.type });
   updateBadge('badge-right', { angle: displayAngleR, type: kinematics.right.type });
-
   document.getElementById('ratio-val').innerText = `${kinematics.ratio}%`;
 
-  // Gráfica continua
   chart.data.datasets[0].data.shift();
   chart.data.datasets[0].data.push(kinematics.left.type === 'Valgo' ? displayAngleL : 0);
   chart.data.datasets[1].data.shift();
   chart.data.datasets[1].data.push(kinematics.right.type === 'Valgo' ? displayAngleR : 0);
   chart.update();
 
-  // Detección automática de fase excéntrica y nadir
   const currentHipY = (lHip.y + rHip.y) / 2;
 
   if (evalState === 'WAIT_DESCENT') {
@@ -199,22 +191,14 @@ function onResults(results) {
     if (kinematics.right.type === 'Valgo' && displayAngleR > peakValgusRight) peakValgusRight = displayAngleR;
     if (kinematics.ratio < nadirKneeDistRatio) nadirKneeDistRatio = kinematics.ratio;
 
-    // Retorno a bipedestación (fin de la sentadilla)
     if (currentHipY < baselineHipY + 0.03) {
       evalState = 'FINISHED';
       repCount++;
-      addRepToTable(repCount, peakValgusLeft, peakValgusRight);
       showNotice('¡Evaluación Completa! ✅');
       btnReset.style.display = 'inline-block';
       btnSingleSquat.style.display = 'none';
 
-      document.getElementById('fppa-left').innerText = `${peakValgusLeft.toFixed(1)}° (Pico Valgo)`;
-      document.getElementById('fppa-right').innerText = `${peakValgusRight.toFixed(1)}° (Pico Valgo)`;
-      document.getElementById('ratio-val').innerText = `${nadirKneeDistRatio}% (Mínimo)`;
-      updateBadge('badge-left', { angle: peakValgusLeft, type: 'Valgo' });
-      updateBadge('badge-right', { angle: peakValgusRight, type: 'Valgo' });
-
-      generateClinicalReport(peakValgusLeft, peakValgusRight);
+      renderIntegratedReport(peakValgusLeft, peakValgusRight, nadirKneeDistRatio);
     }
   }
 
@@ -244,72 +228,118 @@ function updateBadge(id, res) {
   }
 }
 
-function generateClinicalReport(maxL, maxR) {
-  const clinicalCard = document.getElementById('clinical-card');
-  const clinFinding = document.getElementById('clin-finding');
-  const clinRisk = document.getElementById('clin-risk');
-  const clinRec = document.getElementById('clin-recommendation');
+function renderIntegratedReport(maxL, maxR, minRatio) {
+  reportPlaceholder.style.display = 'none';
+  reportContent.style.display = 'block';
 
-  clinicalCard.style.display = 'block';
-  const peak = Math.max(maxL, maxR);
+  document.getElementById('rep-val-left').innerText = `${maxL.toFixed(1)}°`;
+  document.getElementById('rep-val-right').innerText = `${maxR.toFixed(1)}°`;
+  document.getElementById('rep-val-ratio').innerText = `${minRatio}%`;
+
+  const diff = Math.abs(maxL - maxR).toFixed(1);
+  const asymBox = document.getElementById('rep-asymmetry');
+  if (diff > 4.0) {
+    const dominant = maxL > maxR ? 'Izquierda' : 'Derecha';
+    asymBox.innerHTML = `<strong>Asimetría Bilateral Significativa:</strong> Diferencia de ${diff}° con mayor colapso en extremidad ${dominant}. Sugiere déficit unilateral de estabilidad lumbo-pélvica o tobillo.`;
+    asymBox.style.borderLeftColor = 'var(--warning)';
+  } else {
+    asymBox.innerHTML = `<strong>Alineación Simétrica:</strong> Comportamiento bilateral homogéneo (diferencia de solo ${diff}°).`;
+    asymBox.style.borderLeftColor = 'var(--cyan-accent)';
+  }
+
+  const maxPeak = Math.max(maxL, maxR);
+  const riskBanner = document.getElementById('risk-banner');
+  const riskTitle = document.getElementById('risk-title');
+  const riskDesc = document.getElementById('risk-description');
+  const lcaDetail = document.getElementById('detail-lca');
+  const patellaDetail = document.getElementById('detail-patella');
+  const interventionList = document.getElementById('intervention-list');
+
+  let riskCategory = "";
   let voiceMsg = "";
 
-  if (peak > 12) {
-    clinicalCard.style.borderLeftColor = 'var(--danger)';
-    clinFinding.innerHTML = `<span style="color: var(--danger); font-weight: bold;">Colapso Medial Severo (${peak.toFixed(1)}° pico)</span>`;
-    clinRisk.innerText = "Alto riesgo mecánico de sobrecarga del Ligamento Cruzado Anterior (LCA) e hiperpresión patelofemoral lateral.";
-    clinRec.innerText = "Entrenamiento neuromuscular de glúteo medio/mayor, control pronador de retropié y reeducación motriz con biofeedback.";
-    voiceMsg = "Atención: Valgo dinámico severo detectado. Riesgo de sobrecarga ligamentosa y femoropatelar.";
-  } else if (peak >= 5) {
-    clinicalCard.style.borderLeftColor = 'var(--warning)';
-    clinFinding.innerHTML = `<span style="color: var(--warning); font-weight: bold;">Valgo Dinámico Moderado (${peak.toFixed(1)}° pico)</span>`;
-    clinRisk.innerText = "Compensación articular moderada. Mayor susceptibilidad a dolor femoropatelar y fatiga precoz de estabilizadores pélvicos.";
-    clinRec.innerText = "Fortalecimiento excéntrico de cuádriceps alineado al segundo ortejo y activación abductora de cadera con banda elástica.";
-    voiceMsg = "Valgo dinámico moderado detectado. Se sugiere corrección de la alineación de rodillas.";
+  if (maxPeak > 12 || minRatio < 80) {
+    riskCategory = "Alto Riesgo de Lesión";
+    reportStatusBadge.innerText = "Resultado: Alto Riesgo";
+    reportStatusBadge.style.background = "rgba(239, 68, 68, 0.2)";
+    reportStatusBadge.style.color = "var(--danger)";
+
+    riskBanner.style.background = "rgba(239, 68, 68, 0.1)";
+    riskBanner.style.borderLeft = "4px solid var(--danger)";
+    riskTitle.innerHTML = `<span style="color: var(--danger);">NIVEL DE RIESGO: ALTO (Colapso Severo > 12°)</span>`;
+    riskDesc.innerText = "El sujeto presenta un colapso dinámico medial acentuado en el nadir. Este patrón incrementa críticamente los momentos de aducción y rotación interna de cadera acoplados.";
+
+    lcaDetail.innerText = "Sobrecarga tensil pronunciada sobre el fascículo anteromedial del LCA por momento en valgo. Mayor vulnerabilidad ante gestos deportivos de desaceleración y pivote.";
+    patellaDetail.innerText = "Vector en valgo aumentado: Desplazamiento lateral del tracking patelar, reduciendo el área de contacto y concentrando el estrés de contacto en la carilla lateral.";
+
+    interventionList.innerHTML = `
+      <li><strong>Fortalecimiento analítico:</strong> Glúteo medio (fibras posteriores) y glúteo mayor (abducción y rotación externa resistida con banda).</li>
+      <li><strong>Control sensoriomotor:</strong> Sentadillas unipodales frente a espejo con biofeedback visual en tiempo real.</li>
+      <li><strong>Evaluación de movilidad:</strong> Verificar restricción de dorsiflexión de tobillo (test lunge) que esté forzando pronación compensatoria.</li>
+    `;
+    voiceMsg = "Evaluación completa: Alto riesgo de valgo dinámico detectado.";
+
+  } else if (maxPeak >= 5 || minRatio < 92) {
+    riskCategory = "Riesgo Moderado";
+    reportStatusBadge.innerText = "Resultado: Riesgo Moderado";
+    reportStatusBadge.style.background = "rgba(234, 179, 8, 0.2)";
+    reportStatusBadge.style.color = "var(--warning)";
+
+    riskBanner.style.background = "rgba(234, 179, 8, 0.1)";
+    riskBanner.style.borderLeft = "4px solid var(--warning)";
+    riskTitle.innerHTML = `<span style="color: var(--warning);">NIVEL DE RIESGO: MODERADO (Desviación 5° a 12°)</span>`;
+    riskDesc.innerText = "Patrón cinemático compensatorio leve a moderado. Adecuado en reposo pero vulnerable a fatiga en series repetitivas.";
+
+    lcaDetail.innerText = "Tensión ligamentosa moderada dentro de límites submáximos pero con potencial lesivo acumulativo bajo fatiga excéntrica.";
+    patellaDetail.innerText = "Ligera hiperpresión en el retináculo lateral patelar, compatible con molestias femoropadelares tempranas en deportistas.";
+
+    interventionList.innerHTML = `
+      <li><strong>Activación neuromuscular:</strong> Monster walks y puentes de glúteo con banda elástica antes de cargas pesadas.</li>
+      <li><strong>Conciencia cinemática:</strong> Mantener rodilla alineada sobre el 2do ortejo durante todo el rango de movimiento.</li>
+    `;
+    voiceMsg = "Evaluación completa: Valgo moderado detectado.";
+
   } else {
-    clinicalCard.style.borderLeftColor = 'var(--success)';
-    clinFinding.innerHTML = `<span style="color: var(--success); font-weight: bold;">Alineación Fisiológica Neutra (${peak.toFixed(1)}° pico)</span>`;
-    clinRisk.innerText = "Cinemática frontal controlada. Vectores de carga fémoro-tibiales dentro de rangos fisiológicos óptimos.";
-    clinRec.innerText = "Patrón motor adecuado. Progresar hacia sentadilla monopodal o ejercicios con aceleración/desaceleración.";
-    voiceMsg = "Excelente ejecución. Alineación biomecánica neutra.";
+    riskCategory = "Bajo Riesgo / Normal";
+    reportStatusBadge.innerText = "Resultado: Óptimo";
+    reportStatusBadge.style.background = "rgba(34, 197, 94, 0.2)";
+    reportStatusBadge.style.color = "var(--success)";
+
+    riskBanner.style.background = "rgba(34, 197, 94, 0.1)";
+    riskBanner.style.borderLeft = "4px solid var(--success)";
+    riskTitle.innerHTML = `<span style="color: var(--success);">NIVEL DE RIESGO: BAJO (Alineación Fisiológica)</span>`;
+    riskDesc.innerText = "Cinemática frontal controlada. Los vectores de carga fémoro-tibiales se disipan axialmente de manera fisiológica.";
+
+    lcaDetail.innerText = "Fuerzas de corte anteriores y momentos en valgo dentro de los rangos fisiológicos protegidos.";
+    patellaDetail.innerText = "Tracking patelar congruente en la tróclea femoral sin sobrecargas por vectores de fuerza laterales.";
+
+    interventionList.innerHTML = `
+      <li><strong>Mantenimiento:</strong> Mantener la rutina motriz actual y progresar hacia gestos pliométricos o sentadilla unilateral.</li>
+    `;
+    voiceMsg = "Evaluación completa: Alineación óptima y bajo riesgo.";
   }
+
+  const table = document.getElementById('reps-table').querySelector('tbody');
+  const row = table.insertRow();
+  row.innerHTML = `<td>#${repCount}</td><td>${maxL.toFixed(1)}°</td><td>${maxR.toFixed(1)}°</td><td>${minRatio}%</td><td><strong>${riskCategory}</strong></td>`;
 
   speakFeedback(voiceMsg);
 }
 
-function addRepToTable(rep, maxL, maxR) {
-  const table = document.getElementById('reps-table').querySelector('tbody');
-  const row = table.insertRow();
-  const maxPeak = Math.max(maxL, maxR);
-  const risk = maxPeak > 12 ? 'Alto Riesgo' : maxPeak > 5 ? 'Moderado' : 'Bajo / Normal';
-  row.innerHTML = `<td>#${rep}</td><td>${maxL.toFixed(1)}°</td><td>${maxR.toFixed(1)}°</td><td><strong>${risk}</strong></td>`;
-}
-
-// Controles del Modal de Protocolo Estandarizado
-function openProtocol() {
-  if (protocolModal) protocolModal.style.display = 'flex';
-}
-
-function closeProtocol() {
-  if (protocolModal) protocolModal.style.display = 'none';
-}
-
-if (btnOpenProtocol) btnOpenProtocol.addEventListener('click', openProtocol);
-if (btnCloseModal) btnCloseModal.addEventListener('click', closeProtocol);
-if (btnConfirmProtocol) btnConfirmProtocol.addEventListener('click', closeProtocol);
-
-window.addEventListener('click', (e) => {
-  if (e.target === protocolModal) closeProtocol();
-});
-
-// Botón de evaluación con audio-instrucción y cuenta regresiva
+// 1. Al presionar "Evaluar 1 Sentadilla", se muestra el modal con las instrucciones
 btnSingleSquat.addEventListener('click', () => {
   if (!cameraInstance) {
     alert('Primero debes presionar "Iniciar Cámara".');
     return;
   }
+  protocolModal.style.display = 'flex';
+  speakFeedback("Revisa las instrucciones en pantalla antes de iniciar.");
+});
 
-  // Audio-guía antes de descender
+// 2. Al confirmar "¡Listo, empezar cuenta regresiva!", se cierra el modal y corre el temporizador
+btnConfirmProtocol.addEventListener('click', () => {
+  protocolModal.style.display = 'none';
+
   speakFeedback("Prepárate. Brazos al pecho y pies al ancho de hombros.");
 
   evalState = 'COUNTDOWN';
@@ -335,19 +365,23 @@ btnSingleSquat.addEventListener('click', () => {
   }, 1000);
 });
 
-// Botón para reiniciar
+// Botón de cierre manual del modal
+btnCloseModal.addEventListener('click', () => {
+  protocolModal.style.display = 'none';
+});
+
+// Botón para nueva evaluación
 btnReset.addEventListener('click', () => {
   evalState = 'IDLE';
   countdownEl.style.display = 'none';
   btnReset.style.display = 'none';
   btnSingleSquat.style.display = 'inline-block';
-  document.getElementById('clinical-card').style.display = 'none';
   document.getElementById('fppa-left').innerText = '0.0°';
   document.getElementById('fppa-right').innerText = '0.0°';
   document.getElementById('ratio-val').innerText = '100%';
 });
 
-// Inicialización de MediaPipe Pose
+// Inicializar MediaPipe
 const pose = new Pose({
   locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
 });
