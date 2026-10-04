@@ -28,11 +28,12 @@
       <div class="video-container">
         <video id="webcam" playsinline></video>
         <canvas id="output_canvas"></canvas>
+        <div id="countdown-overlay" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:4rem; font-weight:900; color:#06b6d4; text-shadow:0 0 20px rgba(0,0,0,0.9); pointer-events:none; text-align:center; z-index:10;"></div>
       </div>
       <div class="toolbar">
         <button id="btn-toggle-cam" class="btn primary">Iniciar Cámara</button>
-        <button id="btn-switch-cam" class="btn secondary">Cambiar Cámara</button>
-        <button id="btn-record-rep" class="btn warning">Auto Repetición: ON</button>
+        <button id="btn-single-squat" class="btn warning">🎯 Evaluar 1 Sentadilla</button>
+        <button id="btn-reset-eval" class="btn secondary" style="display:none;">🔄 Nueva Evaluación</button>
       </div>
     </section>
 
@@ -82,7 +83,6 @@
             <tbody></tbody>
           </table>
         </div>
-        <button id="btn-export-csv" class="btn small">Exportar CSV</button>
         <button onclick="window.print()" class="btn small">Imprimir Informe</button>
       </div>
     </section>
