@@ -6,22 +6,28 @@ const btnSingleSquat = document.getElementById('btn-single-squat');
 const btnReset = document.getElementById('btn-reset-eval');
 const statusBadge = document.getElementById('camera-status');
 
+// Elementos del Modal de Protocolo
+const protocolModal = document.getElementById('protocol-modal');
+const btnOpenProtocol = document.getElementById('btn-open-protocol');
+const btnCloseModal = document.getElementById('btn-close-modal');
+const btnConfirmProtocol = document.getElementById('btn-confirm-protocol');
+
 let cameraInstance = null;
 let repCount = 0;
 
-// Máquina de estados
+// Máquina de estados: 'IDLE' | 'COUNTDOWN' | 'WAIT_DESCENT' | 'RECORDING' | 'FINISHED'
 let evalState = 'IDLE'; 
 let peakValgusLeft = 0;
 let peakValgusRight = 0;
 let nadirKneeDistRatio = 100;
 let baselineHipY = null;
 
-// Filtro de suavizado EMA (elimina temblores sin retrasar la respuesta)
+// Filtro Paso Bajo Exponencial (EMA) para suavizado cinemático
 let smoothL = 0;
 let smoothR = 0;
 const EMA_ALPHA = 0.4;
 
-// Monitoreo de FPS
+// Monitoreo de frecuencia de muestreo (FPS)
 let lastFrameTime = performance.now();
 let frameCount = 0;
 let fps = 0;
@@ -44,6 +50,7 @@ const chart = new Chart(ctxChart, {
   }
 });
 
+// Síntesis de voz para instrucciones y feedback auditivo
 function speakFeedback(text) {
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
@@ -54,10 +61,8 @@ function speakFeedback(text) {
   }
 }
 
-// CÁLCULO DIRECTO E INFALIBLE DE VALGO VS VARO
-// Compara la posición de la rodilla respecto a la línea entre su propia cadera y el centro entre tobillos
+// Discriminación directa e infalible de Valgo vs Varo
 function calculateKneeKinematics(hipL, kneeL, ankleL, hipR, kneeR, ankleR) {
-  // 1. Ángulo FPPA clásico (desviación de 180° en la línea cadera-rodilla-tobillo)
   function getAngle(hip, knee, ankle) {
     const v1 = { x: hip.x - knee.x, y: hip.y - knee.y };
     const v2 = { x: ankle.x - knee.x, y: ankle.y - knee.y };
@@ -72,16 +77,9 @@ function calculateKneeKinematics(hipL, kneeL, ankleL, hipR, kneeR, ankleR) {
   const rawAngleL = getAngle(hipL, kneeL, ankleL);
   const rawAngleR = getAngle(hipR, kneeR, ankleR);
 
-  // 2. Discriminación de dirección física (adentro vs afuera)
-  // En MediaPipe, el Landmark 23 es Cadera Izquierda y 24 es Cadera Derecha del sujeto.
-  // Calculamos la distancia entre rodillas y la distancia entre caderas/tobillos
   const kneeDistance = Math.abs(kneeL.x - kneeR.x);
   const ankleDistance = Math.abs(ankleL.x - ankleR.x) || 1;
-  const hipDistance = Math.abs(hipL.x - hipR.x) || 1;
 
-  // Si la rodilla izquierda se mueve hacia la derecha (hacia la otra pierna), es VALGO
-  // La rodilla izquierda es medial si está más cerca de la rodilla opuesta que su cadera
-  // REGLA DIRECTA: Si la rodilla de ese lado invade el espacio medial hacia la otra rodilla:
   const isMedialLeft = (hipL.x < hipR.x) ? (kneeL.x > hipL.x) : (kneeL.x < hipL.x);
   const isMedialRight = (hipR.x > hipL.x) ? (kneeR.x < hipR.x) : (kneeR.x > hipR.x);
 
@@ -95,8 +93,7 @@ function calculateKneeKinematics(hipL, kneeL, ankleL, hipR, kneeR, ankleR) {
     typeR = isMedialRight ? 'Valgo' : 'Varo';
   }
 
-  // Comprobación de seguridad adicional:
-  // Si la distancia entre rodillas es menor que la distancia entre tobillos, OBLIGATORIAMENTE hay colapso en valgo
+  // Si la distancia inter-rodilla es menor al 95% de la inter-tobillo, es colapso en valgo
   if (kneeDistance < ankleDistance * 0.95) {
     if (rawAngleL >= 3.0) typeL = 'Valgo';
     if (rawAngleR >= 3.0) typeR = 'Valgo';
@@ -109,6 +106,7 @@ function calculateKneeKinematics(hipL, kneeL, ankleL, hipR, kneeR, ankleR) {
   };
 }
 
+// Bucle continuo de adquisición y renderizado
 function onResults(results) {
   frameCount++;
   const now = performance.now();
@@ -164,10 +162,9 @@ function onResults(results) {
   drawLine(lHip, lKnee); drawLine(lKnee, lAnkle);
   drawLine(rHip, rKnee); drawLine(rKnee, rAnkle);
 
-  // Ejecutar cálculo biomecánico blindado
   const kinematics = calculateKneeKinematics(lHip, lKnee, lAnkle, rHip, rKnee, rAnkle);
 
-  // Filtro EMA para suavizar
+  // Filtrado EMA
   smoothL = (EMA_ALPHA * kinematics.left.angle) + ((1 - EMA_ALPHA) * smoothL);
   smoothR = (EMA_ALPHA * kinematics.right.angle) + ((1 - EMA_ALPHA) * smoothR);
 
@@ -181,14 +178,14 @@ function onResults(results) {
 
   document.getElementById('ratio-val').innerText = `${kinematics.ratio}%`;
 
-  // Gráfica dinámica
+  // Gráfica continua
   chart.data.datasets[0].data.shift();
   chart.data.datasets[0].data.push(kinematics.left.type === 'Valgo' ? displayAngleL : 0);
   chart.data.datasets[1].data.shift();
   chart.data.datasets[1].data.push(kinematics.right.type === 'Valgo' ? displayAngleR : 0);
   chart.update();
 
-  // Detección automática del nadir de sentadilla
+  // Detección automática de fase excéntrica y nadir
   const currentHipY = (lHip.y + rHip.y) / 2;
 
   if (evalState === 'WAIT_DESCENT') {
@@ -202,7 +199,7 @@ function onResults(results) {
     if (kinematics.right.type === 'Valgo' && displayAngleR > peakValgusRight) peakValgusRight = displayAngleR;
     if (kinematics.ratio < nadirKneeDistRatio) nadirKneeDistRatio = kinematics.ratio;
 
-    // Retorno a posición erguida
+    // Retorno a bipedestación (fin de la sentadilla)
     if (currentHipY < baselineHipY + 0.03) {
       evalState = 'FINISHED';
       repCount++;
@@ -288,12 +285,32 @@ function addRepToTable(rep, maxL, maxR) {
   row.innerHTML = `<td>#${rep}</td><td>${maxL.toFixed(1)}°</td><td>${maxR.toFixed(1)}°</td><td><strong>${risk}</strong></td>`;
 }
 
-// Botón de evaluación
+// Controles del Modal de Protocolo Estandarizado
+function openProtocol() {
+  if (protocolModal) protocolModal.style.display = 'flex';
+}
+
+function closeProtocol() {
+  if (protocolModal) protocolModal.style.display = 'none';
+}
+
+if (btnOpenProtocol) btnOpenProtocol.addEventListener('click', openProtocol);
+if (btnCloseModal) btnCloseModal.addEventListener('click', closeProtocol);
+if (btnConfirmProtocol) btnConfirmProtocol.addEventListener('click', closeProtocol);
+
+window.addEventListener('click', (e) => {
+  if (e.target === protocolModal) closeProtocol();
+});
+
+// Botón de evaluación con audio-instrucción y cuenta regresiva
 btnSingleSquat.addEventListener('click', () => {
   if (!cameraInstance) {
     alert('Primero debes presionar "Iniciar Cámara".');
     return;
   }
+
+  // Audio-guía antes de descender
+  speakFeedback("Prepárate. Brazos al pecho y pies al ancho de hombros.");
 
   evalState = 'COUNTDOWN';
   let counter = 3;
@@ -306,6 +323,7 @@ btnSingleSquat.addEventListener('click', () => {
       countdownEl.innerText = counter;
     } else if (counter === 0) {
       countdownEl.innerText = '¡BAJA!';
+      speakFeedback("Baja");
     } else {
       clearInterval(timer);
       countdownEl.innerText = 'Realiza la sentadilla...';
@@ -329,7 +347,7 @@ btnReset.addEventListener('click', () => {
   document.getElementById('ratio-val').innerText = '100%';
 });
 
-// MediaPipe Pose
+// Inicialización de MediaPipe Pose
 const pose = new Pose({
   locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
 });
@@ -341,7 +359,7 @@ pose.setOptions({
 });
 pose.onResults(onResults);
 
-// Botón cámara
+// Encendido de cámara
 document.getElementById('btn-toggle-cam').addEventListener('click', async () => {
   if (!cameraInstance) {
     cameraInstance = new Camera(videoElement, {
