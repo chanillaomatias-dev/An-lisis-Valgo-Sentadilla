@@ -42,6 +42,7 @@ const MEDIAN_WINDOW = 5;      // ventana del filtro de mediana (rechazo de salto
 const MAX_REC_MS = 15000;     // tiempo máximo de una repetición
 const BASELINE_FRAMES = 45;   // cuadros usados para la referencia en bipedestación
 const MIN_BASELINE_FRAMES = 10;
+const REPS_PER_SET = 3;      // sentadillas consecutivas que se promedian (recomendado 3 a 5)
 
 // ---------------------------------------------------------------------
 // Estado
@@ -60,6 +61,7 @@ let baseline = null;     // { hipY, legLen, fL, fR, ratio } en bipedestación
 let recSamples = [];
 let maxDrop = 0;
 let recStart = 0;
+let setResults = [];     // resultados de cada repetición del set actual
 
 // FPS
 let lastFrameTime = performance.now();
@@ -328,14 +330,62 @@ function computeResults(samples) {
   };
 }
 
+function mean(arr) {
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+function stdDev(arr) {
+  if (arr.length < 2) return 0;
+  const m = mean(arr);
+  return Math.sqrt(arr.reduce((acc, v) => acc + (v - m) ** 2, 0) / (arr.length - 1));
+}
+
+// Categoría de riesgo de una medición (usada en la tabla y en el informe)
+function riskCategoryOf(maxL, maxR, minRatio) {
+  const maxPeak = Math.max(maxL, maxR);
+  const valgusConfirmed = maxPeak >= TYPE_DEADBAND;
+  if (maxPeak > FPPA_SEVERE || (valgusConfirmed && minRatio < KA_HIGH)) return 'Alto Riesgo de Lesión';
+  if (maxPeak >= FPPA_MODERATE || (valgusConfirmed && minRatio < KA_MODERATE)) return 'Riesgo Moderado';
+  return 'Bajo Riesgo / Normal';
+}
+
+function addRepRow(n, res) {
+  const tbody = document.getElementById('reps-table').querySelector('tbody');
+  const row = tbody.insertRow();
+  row.innerHTML = `<td>#${n}</td><td>${res.peakL.toFixed(1)}°</td><td>${res.peakR.toFixed(1)}°</td><td>${res.minRatio}%</td><td>${riskCategoryOf(res.peakL, res.peakR, res.minRatio)}</td>`;
+}
+
 function finishEvaluation() {
   const res = computeResults(recSamples);
-  evalState = 'FINISHED';
   repCount++;
-  showNotice('¡Evaluación Completa! ✅');
+  setResults.push(res);
+  addRepRow(repCount, res);
+  recSamples = [];
+  maxDrop = 0;
+
+  if (repCount < REPS_PER_SET) {
+    // Faltan repeticiones: seguir esperando el siguiente descenso
+    evalState = 'WAIT_DESCENT';
+    btnReset.style.display = 'inline-block';
+    showNotice(`Repetición ${repCount}/${REPS_PER_SET} ✅ — vuelve a bajar`);
+    speakFeedback(`Repetición ${repCount}. Otra vez.`);
+    return;
+  }
+
+  // Set completo: promediar y generar informe
+  evalState = 'FINISHED';
+  showNotice(`¡Evaluación completa (${REPS_PER_SET} repeticiones)! ✅`);
   btnReset.style.display = 'inline-block';
   btnSingleSquat.style.display = 'none';
-  renderIntegratedReport(res.peakL, res.peakR, res.minRatio);
+
+  const pL = setResults.map(r => r.peakL);
+  const pR = setResults.map(r => r.peakR);
+  const kas = setResults.map(r => r.minRatio);
+  renderIntegratedReport(mean(pL), mean(pR), Math.round(mean(kas)), {
+    n: setResults.length,
+    sdL: stdDev(pL),
+    sdR: stdDev(pR)
+  });
 }
 
 function showNotice(text) {
@@ -361,7 +411,7 @@ function updateBadge(id, s) {
   }
 }
 
-function renderIntegratedReport(maxL, maxR, minRatio) {
+function renderIntegratedReport(maxL, maxR, minRatio, stats) {
   reportPlaceholder.style.display = 'none';
   reportContent.style.display = 'block';
 
@@ -376,6 +426,14 @@ function renderIntegratedReport(maxL, maxR, minRatio) {
   let baseNote = '';
   if (baseline) {
     baseNote = `<br><small>FPPA en bipedestación (referencia): Izq ${baseline.fL.toFixed(1)}° / Der ${baseline.fR.toFixed(1)}° · K/A inicial ${Math.round(baseline.ratio)}%</small>`;
+  }
+
+  if (stats) {
+    const sdMax = Math.max(stats.sdL, stats.sdR);
+    const consist = sdMax > 3
+      ? ' ⚠️ Alta variabilidad entre repeticiones: interpretar con cautela.'
+      : ' Patrón consistente entre repeticiones.';
+    baseNote += `<br><small>Promedio de ${stats.n} repeticiones · Variabilidad (DE): Izq ${stats.sdL.toFixed(1)}° / Der ${stats.sdR.toFixed(1)}°.${consist}</small>`;
   }
 
   if (diff > 4.0) {
@@ -464,7 +522,7 @@ function renderIntegratedReport(maxL, maxR, minRatio) {
 
   const table = document.getElementById('reps-table').querySelector('tbody');
   const row = table.insertRow();
-  row.innerHTML = `<td>#${repCount}</td><td>${maxL.toFixed(1)}°</td><td>${maxR.toFixed(1)}°</td><td>${minRatio}%</td><td><strong>${riskCategory}</strong></td>`;
+  row.innerHTML = `<td><strong>Prom.</strong></td><td><strong>${maxL.toFixed(1)}°</strong></td><td><strong>${maxR.toFixed(1)}°</strong></td><td><strong>${minRatio}%</strong></td><td><strong>${riskCategory}</strong></td>`;
 
   speakFeedback(voiceMsg);
 }
@@ -479,6 +537,9 @@ function resetEvaluationData() {
   maxDrop = 0;
   smoothL = null;
   smoothR = null;
+  setResults = [];
+  repCount = 0;
+  document.getElementById('reps-table').querySelector('tbody').innerHTML = '';
 }
 
 // 1. "Evaluar 1 Sentadilla" -> modal de instrucciones
@@ -513,7 +574,7 @@ btnConfirmProtocol.addEventListener('click', () => {
       speakFeedback('Baja');
       evalState = 'WAIT_DESCENT'; // la detección del descenso parte al decir "Baja"
       setTimeout(() => {
-        if (evalState === 'WAIT_DESCENT') countdownEl.innerText = 'Realiza la sentadilla...';
+        if (evalState === 'WAIT_DESCENT') countdownEl.innerText = `Realiza ${REPS_PER_SET} sentadillas seguidas...`;
       }, 1200);
     }
   }, 1000);
@@ -561,3 +622,14 @@ document.getElementById('btn-toggle-cam').addEventListener('click', async () => 
     statusBadge.style.background = '#15803d';
   }
 });
+
+// ---------------------------------------------------------------------
+// Textos de la interfaz acordes al protocolo de varias repeticiones
+// ---------------------------------------------------------------------
+btnSingleSquat.innerText = `🎯 Evaluar ${REPS_PER_SET} Sentadillas`;
+reportPlaceholder.innerHTML = `Presione <strong>"🎯 Evaluar ${REPS_PER_SET} Sentadillas"</strong>, siga las instrucciones de posicionamiento en pantalla y realice ${REPS_PER_SET} sentadillas seguidas para obtener el promedio, la variabilidad y las sugerencias kinesiológicas.`;
+const protocolItems = document.querySelectorAll('.protocol-item');
+if (protocolItems[3]) {
+  protocolItems[3].querySelector('h4').innerText = 'Subida y repeticiones';
+  protocolItems[3].querySelector('p').innerHTML = `Vuelve a subir a la posición erguida y <strong>repite el movimiento de forma continua hasta completar ${REPS_PER_SET} sentadillas</strong>. La aplicación promediará las repeticiones y mostrará el informe automáticamente.`;
+}
