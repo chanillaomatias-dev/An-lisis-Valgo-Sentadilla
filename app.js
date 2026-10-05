@@ -630,6 +630,9 @@ document.getElementById('btn-toggle-cam').addEventListener('click', async () => 
 btnSingleSquat.innerText = `🎯 Evaluar ${REPS_PER_SET} Sentadillas`;
 reportPlaceholder.innerHTML = `Presione <strong>"🎯 Evaluar ${REPS_PER_SET} Sentadillas"</strong>, siga las instrucciones de posicionamiento en pantalla y realice ${REPS_PER_SET} sentadillas seguidas para obtener el promedio, la variabilidad y las sugerencias kinesiológicas.`;
 const protocolItems = document.querySelectorAll('.protocol-item');
+if (protocolItems[0]) {
+  protocolItems[0].querySelector('p').innerHTML = `Aléjate a <strong>2.0 - 2.5 metros</strong> de la cámara: son aproximadamente <strong>3 a 4 pasos normales hacia atrás</strong> desde la pantalla. Deben verse completos tus <strong>pies, rodillas y caderas</strong>.`;
+}
 if (protocolItems[3]) {
   protocolItems[3].querySelector('h4').innerText = 'Subida y repeticiones';
   protocolItems[3].querySelector('p').innerHTML = `Vuelve a subir a la posición erguida y <strong>repite el movimiento de forma continua hasta completar ${REPS_PER_SET} sentadillas</strong>. La aplicación promediará las repeticiones y mostrará el informe automáticamente.`;
