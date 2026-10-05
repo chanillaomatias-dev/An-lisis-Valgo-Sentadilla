@@ -1,7 +1,7 @@
 :root {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-card: #182234;
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-card: #0a0a0a;
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
   --cyan-accent: #06b6d4;
@@ -9,7 +9,7 @@
   --success: #22c55e;
   --warning: #eab308;
   --danger: #ef4444;
-  --border: #334155;
+  --border: #1f2937;
 }
 
 * {
@@ -43,7 +43,7 @@ header {
 
 h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; }
 .subtitle { font-size: 0.82rem; color: var(--text-muted); margin-top: 4px; }
-.status-badge { background: #334155; color: #f1f5f9; padding: 6px 14px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+.status-badge { background: #1f2937; color: #f1f5f9; padding: 6px 14px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
 
 .main-layout {
   display: grid;
@@ -143,7 +143,7 @@ h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; }
 
 .fppa-readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 .metric-box {
-  background: var(--bg-primary);
+  background: #111111;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.75rem;
@@ -160,7 +160,7 @@ h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--bg-primary);
+  background: #111111;
   padding: 0.7rem 1rem;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -168,10 +168,10 @@ h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; }
 .ratio-box .value { font-size: 1.3rem; font-weight: 700; color: var(--cyan-accent); }
 
 /* Informe en interfaz */
-.report-card { background: var(--bg-card); min-height: 100%; border: 1px solid #334155; }
+.report-card { background: var(--bg-card); min-height: 100%; border: 1px solid var(--border); }
 .report-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; margin-bottom: 1rem; }
 .report-header h2 { margin: 0; color: #f1f5f9; }
-.report-badge { background: #334155; color: var(--text-muted); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
+.report-badge { background: #1f2937; color: var(--text-muted); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
 
 .report-placeholder { color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; padding: 2rem 1rem; text-align: center; }
 
@@ -179,18 +179,18 @@ h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; }
 .report-block h3 { font-size: 0.85rem; color: var(--cyan-accent); text-transform: uppercase; margin-bottom: 0.6rem; letter-spacing: 0.04em; }
 
 .report-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.6rem; }
-.report-stat { background: var(--bg-primary); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border); text-align: center; }
+.report-stat { background: #111111; padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border); text-align: center; }
 .stat-label { display: block; font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; }
 .stat-val { font-size: 1.3rem; font-weight: 800; color: #fff; }
 
-.asymmetry-box { margin-top: 6px; font-size: 0.8rem; background: rgba(15, 23, 42, 0.7); padding: 6px 10px; border-radius: 6px; border-left: 3px solid var(--cyan-accent); color: #cbd5e1; }
+.asymmetry-box { margin-top: 6px; font-size: 0.8rem; background: rgba(255, 255, 255, 0.04); padding: 6px 10px; border-radius: 6px; border-left: 3px solid var(--cyan-accent); color: #cbd5e1; }
 
 .risk-indicator-box { padding: 1rem; border-radius: 8px; border: 1px solid var(--border); margin-top: 4px; }
 .risk-indicator-box h4 { font-size: 1.05rem; margin-bottom: 4px; font-weight: 800; }
 .risk-indicator-box p { font-size: 0.83rem; line-height: 1.4; color: #e2e8f0; }
 
 .clinical-details-list { display: flex; flex-direction: column; gap: 0.5rem; }
-.detail-item { background: var(--bg-primary); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border); font-size: 0.8rem; line-height: 1.35; }
+.detail-item { background: #111111; padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border); font-size: 0.8rem; line-height: 1.35; }
 .detail-item strong { color: #38bdf8; display: block; margin-bottom: 3px; }
 .detail-item p { color: #cbd5e1; }
 
@@ -203,7 +203,7 @@ th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
 th { color: var(--text-muted); }
 
 /* Modal emergente */
-.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.88); backdrop-filter: blur(5px); z-index: 100; align-items: center; justify-content: center; padding: 1rem; }
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.88); backdrop-filter: blur(5px); z-index: 100; align-items: center; justify-content: center; padding: 1rem; }
 .modal-content { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; max-width: 620px; width: 100%; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); }
 .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1.2rem 1.5rem; border-bottom: 1px solid var(--border); }
 .modal-header h2 { font-size: 1.15rem; color: var(--cyan-accent); }
@@ -212,7 +212,7 @@ th { color: var(--text-muted); }
 .modal-intro { font-size: 0.88rem; color: var(--text-muted); margin-bottom: 1.2rem; line-height: 1.4; }
 .protocol-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 @media (max-width: 600px) { .protocol-grid { grid-template-columns: 1fr; } }
-.protocol-item { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; position: relative; }
+.protocol-item { background: #111111; border: 1px solid var(--border); border-radius: 8px; padding: 1rem; position: relative; }
 .protocol-item .step-num { position: absolute; top: 10px; right: 12px; background: rgba(6, 182, 212, 0.15); color: var(--cyan-accent); width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; }
 .protocol-item h4 { font-size: 0.88rem; margin-bottom: 4px; color: #f1f5f9; }
 .protocol-item p { font-size: 0.78rem; color: var(--text-muted); line-height: 1.35; }
