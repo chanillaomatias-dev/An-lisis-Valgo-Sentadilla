@@ -42,7 +42,8 @@ const MEDIAN_WINDOW = 5;      // ventana del filtro de mediana (rechazo de salto
 const MAX_REC_MS = 15000;     // tiempo máximo de una repetición
 const BASELINE_FRAMES = 45;   // cuadros usados para la referencia en bipedestación
 const MIN_BASELINE_FRAMES = 10;
-const REPS_PER_SET = 3;      // sentadillas consecutivas que se promedian (recomendado 3 a 5)
+const REPS_PER_SET = 5;      // sentadillas consecutivas que se promedian (recomendado 3 a 5)
+const COUNTDOWN_SECONDS = 5; // segundos de preparación antes de empezar
 
 // ---------------------------------------------------------------------
 // Estado
@@ -560,7 +561,7 @@ btnConfirmProtocol.addEventListener('click', () => {
   resetEvaluationData();
   evalState = 'COUNTDOWN';
 
-  let counter = 3;
+  let counter = COUNTDOWN_SECONDS;
   countdownEl.style.display = 'block';
   countdownEl.innerText = counter;
 
