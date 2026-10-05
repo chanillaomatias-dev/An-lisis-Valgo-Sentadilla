@@ -1,6 +1,6 @@
 // =====================================================================
 // DKV Screening Tool — Valgo Dinámico de Rodilla (sentadilla bipodal)
-// Versión con marcado de repeticiones en el eje X de la Curva Cinemática
+// Versión con resumen gráfico completo de las 5 repeticiones al finalizar
 // =====================================================================
 
 const videoElement = document.getElementById('webcam');
@@ -46,7 +46,7 @@ const COUNTDOWN_SECONDS = 5; // cuenta regresiva inicial
 const BUFFER_SIZE = 50;      // ancho de la ventana gráfica en tiempo real
 
 // ---------------------------------------------------------------------
-// Estado
+// Estado y Registro Histórico
 // ---------------------------------------------------------------------
 let cameraInstance = null;
 let repCount = 0;
@@ -64,6 +64,13 @@ let maxDrop = 0;
 let recStart = 0;
 let setResults = [];
 let pendingRepLabel = null; // Etiqueta para marcar la repetición en el eje X
+
+// Historial para acumular los datos de todas las repeticiones
+let sessionHistory = {
+  labels: [],
+  left: [],
+  right: []
+};
 
 // FPS
 let lastFrameTime = performance.now();
@@ -123,7 +130,6 @@ const chart = new Chart(ctxChart, {
         },
         grid: {
           color: (ctx) => {
-            // Línea de cuadrícula vertical destacada cuando hay etiqueta de repetición
             const label = ctx.chart.data.labels[ctx.index];
             return (label && label.startsWith('Rep')) ? 'rgba(6, 182, 212, 0.45)' : '#111827';
           }
@@ -286,19 +292,28 @@ function onResults(results) {
   updateBadge('badge-right', smoothR);
   document.getElementById('ratio-val').innerText = `${kin.ratio}%`;
 
-  // Actualización de la gráfica con etiqueta en eje X si corresponde
-  chart.data.datasets[0].data.shift();
-  chart.data.datasets[0].data.push(parseFloat(smoothL.toFixed(1)));
-  chart.data.datasets[1].data.shift();
-  chart.data.datasets[1].data.push(parseFloat(smoothR.toFixed(1)));
+  const valL = parseFloat(smoothL.toFixed(1));
+  const valR = parseFloat(smoothR.toFixed(1));
 
-  chart.data.labels.shift();
-  if (pendingRepLabel) {
-    chart.data.labels.push(pendingRepLabel);
-    pendingRepLabel = null; // consumida
-  } else {
-    chart.data.labels.push('');
+  // Acumular datos históricos mientras se evalúan repeticiones
+  if (evalState === 'RECORDING' || evalState === 'WAIT_DESCENT') {
+    sessionHistory.left.push(valL);
+    sessionHistory.right.push(valR);
+    if (pendingRepLabel) {
+      sessionHistory.labels.push(pendingRepLabel);
+      pendingRepLabel = null; // consumida
+    } else {
+      sessionHistory.labels.push('');
+    }
   }
+
+  // Actualización en vivo de la gráfica con ventana deslizante
+  chart.data.datasets[0].data.shift();
+  chart.data.datasets[0].data.push(valL);
+  chart.data.datasets[1].data.shift();
+  chart.data.datasets[1].data.push(valR);
+  chart.data.labels.shift();
+  chart.data.labels.push('');
   chart.update('none');
 
   // Normalización corporal
@@ -415,10 +430,18 @@ function finishEvaluation() {
     return;
   }
 
+  // --- FIN DE LA SERIE (5 REPETICIONES) ---
   evalState = 'FINISHED';
   showNotice(`¡Evaluación completa (${REPS_PER_SET} repeticiones)! ✅`);
   btnReset.style.display = 'inline-block';
   btnSingleSquat.style.display = 'none';
+
+  // Mostrar el resumen con todas las repeticiones en la gráfica
+  chart.data.labels = sessionHistory.labels;
+  chart.data.datasets[0].data = sessionHistory.left;
+  chart.data.datasets[1].data = sessionHistory.right;
+  chart.options.scales.x.title.text = 'Serie Completa: Las 5 Repeticiones Registradas';
+  chart.update();
 
   const pL = setResults.map(r => r.peakL);
   const pR = setResults.map(r => r.peakR);
@@ -580,12 +603,14 @@ function resetEvaluationData() {
   setResults = [];
   repCount = 0;
   pendingRepLabel = null;
+  sessionHistory = { labels: [], left: [], right: [] };
   document.getElementById('reps-table').querySelector('tbody').innerHTML = '';
 
-  // Limpiar curva cinemática
+  // Restaurar gráfica a modo ventana deslizante
   chart.data.labels = Array(BUFFER_SIZE).fill('');
   chart.data.datasets[0].data = Array(BUFFER_SIZE).fill(0);
   chart.data.datasets[1].data = Array(BUFFER_SIZE).fill(0);
+  chart.options.scales.x.title.text = 'Ciclo / Repetición evaluada';
   chart.update();
 }
 
