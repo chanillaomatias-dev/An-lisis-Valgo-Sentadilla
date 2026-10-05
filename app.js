@@ -1,7 +1,6 @@
 // =====================================================================
 // DKV Screening Tool — Valgo Dinámico de Rodilla (sentadilla bipodal)
-// Versión corregida: FPPA con signo, referencia en bipedestación,
-// detección robusta del nadir y filtrado de outliers.
+// Versión con marcado de repeticiones en el eje X de la Curva Cinemática
 // =====================================================================
 
 const videoElement = document.getElementById('webcam');
@@ -23,27 +22,28 @@ const reportContent = document.getElementById('report-content');
 const reportStatusBadge = document.getElementById('report-status-badge');
 
 // ---------------------------------------------------------------------
-// Parámetros (según README del proyecto)
+// Parámetros
 // ---------------------------------------------------------------------
 const FPPA_MODERATE = 5;      // ° -> desde aquí: valgo moderado
 const FPPA_SEVERE = 12;       // ° -> sobre esto: colapso medial severo
-const KA_HIGH = 80;           // % ratio K/A bajo el cual hay riesgo alto (si hay valgo confirmado)
-const KA_MODERATE = 92;       // % ratio K/A bajo el cual hay riesgo moderado (si hay valgo confirmado)
+const KA_HIGH = 80;           // % ratio K/A bajo el cual hay riesgo alto
+const KA_MODERATE = 92;       // % ratio K/A bajo el cual hay riesgo moderado
 const TYPE_DEADBAND = 3;      // ° -> bajo esto se considera alineación neutra
-const EMA_ALPHA = 0.35;       // filtro paso bajo exponencial (README)
+const EMA_ALPHA = 0.35;       // filtro paso bajo exponencial
 const MIN_VISIBILITY = 0.5;   // visibilidad mínima de los 6 landmarks
 
-// Segmentación temporal (valores normalizados por el largo de la pierna)
+// Segmentación temporal
 const DESCENT_START = 0.08;   // caída de cadera que marca el inicio del descenso
-const DESCENT_END = 0.04;     // caída bajo la cual se considera que ya subió
-const MIN_DEPTH = 0.15;       // profundidad mínima para considerar una sentadilla válida
-const DEEP_PHASE = 0.6;       // fracción de la profundidad máxima que define la "fase profunda"
-const MEDIAN_WINDOW = 5;      // ventana del filtro de mediana (rechazo de saltos puntuales)
-const MAX_REC_MS = 15000;     // tiempo máximo de una repetición
-const BASELINE_FRAMES = 45;   // cuadros usados para la referencia en bipedestación
+const DESCENT_END = 0.04;     // subida completa
+const MIN_DEPTH = 0.15;       // profundidad mínima para sentadilla válida
+const DEEP_PHASE = 0.6;       // fase profunda del nadir
+const MEDIAN_WINDOW = 5;      // ventana filtro mediana
+const MAX_REC_MS = 15000;     // tiempo máximo por repetición
+const BASELINE_FRAMES = 45;   // cuadros para referencia
 const MIN_BASELINE_FRAMES = 10;
-const REPS_PER_SET = 5;      // sentadillas consecutivas que se promedian (recomendado 3 a 5)
-const COUNTDOWN_SECONDS = 5; // segundos de preparación antes de empezar
+const REPS_PER_SET = 5;      // repeticiones por serie
+const COUNTDOWN_SECONDS = 5; // cuenta regresiva inicial
+const BUFFER_SIZE = 50;      // ancho de la ventana gráfica en tiempo real
 
 // ---------------------------------------------------------------------
 // Estado
@@ -58,11 +58,12 @@ let smoothL = null;
 let smoothR = null;
 
 let baselineBuf = [];
-let baseline = null;     // { hipY, legLen, fL, fR, ratio } en bipedestación
+let baseline = null;
 let recSamples = [];
 let maxDrop = 0;
 let recStart = 0;
-let setResults = [];     // resultados de cada repetición del set actual
+let setResults = [];
+let pendingRepLabel = null; // Etiqueta para marcar la repetición en el eje X
 
 // FPS
 let lastFrameTime = performance.now();
@@ -70,22 +71,76 @@ let frameCount = 0;
 let fps = 0;
 
 // ---------------------------------------------------------------------
-// Gráfica
+// Gráfica Cinemática Continua con Eje X visible y marcas de repetición
 // ---------------------------------------------------------------------
 const ctxChart = document.getElementById('kinematicsChart').getContext('2d');
 const chart = new Chart(ctxChart, {
   type: 'line',
   data: {
-    labels: Array(30).fill(''),
+    labels: Array(BUFFER_SIZE).fill(''),
     datasets: [
-      { label: 'FPPA Izq (° + valgo / − varo)', data: Array(30).fill(0), borderColor: '#06b6d4', borderWidth: 2, fill: false, pointRadius: 0 },
-      { label: 'FPPA Der (° + valgo / − varo)', data: Array(30).fill(0), borderColor: '#f43f5e', borderWidth: 2, fill: false, pointRadius: 0 }
+      {
+        label: 'FPPA Izq (°)',
+        data: Array(BUFFER_SIZE).fill(0),
+        borderColor: '#06b6d4',
+        borderWidth: 2,
+        fill: false,
+        pointRadius: 0
+      },
+      {
+        label: 'FPPA Der (°)',
+        data: Array(BUFFER_SIZE).fill(0),
+        borderColor: '#f43f5e',
+        borderWidth: 2,
+        fill: false,
+        pointRadius: 0
+      }
     ]
   },
   options: {
     responsive: true,
-    scales: { y: { min: -10, max: 25, grid: { color: '#334155' } }, x: { display: false } },
-    animation: false
+    animation: false,
+    scales: {
+      y: {
+        min: -10,
+        max: 25,
+        title: {
+          display: true,
+          text: 'Ángulo FPPA (°)',
+          color: '#94a3b8',
+          font: { size: 10 }
+        },
+        grid: { color: '#1f2937' },
+        ticks: { color: '#94a3b8', font: { size: 9 } }
+      },
+      x: {
+        display: true,
+        title: {
+          display: true,
+          text: 'Ciclo / Repetición evaluada',
+          color: '#06b6d4',
+          font: { size: 10, weight: 'bold' }
+        },
+        grid: {
+          color: (ctx) => {
+            // Línea de cuadrícula vertical destacada cuando hay etiqueta de repetición
+            const label = ctx.chart.data.labels[ctx.index];
+            return (label && label.startsWith('Rep')) ? 'rgba(6, 182, 212, 0.45)' : '#111827';
+          }
+        },
+        ticks: {
+          color: '#38bdf8',
+          font: { size: 10, weight: 'bold' },
+          autoSkip: false,
+          maxRotation: 0
+        }
+      }
+    },
+    plugins: {
+      legend: {
+        labels: { color: '#cbd5e1', font: { size: 10 } }
+      }
+    }
   }
 });
 
@@ -109,7 +164,6 @@ function median(arr) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-// Filtro de mediana deslizante: elimina saltos puntuales del modelo
 function medianFilter(arr, win) {
   const half = Math.floor(win / 2);
   return arr.map((_, i) => {
@@ -125,20 +179,6 @@ function classifyType(s) {
   return 'Neutro';
 }
 
-// ---------------------------------------------------------------------
-// Cinemática: FPPA con signo
-//
-// Se trabaja en PÍXELES (no en coordenadas normalizadas) para no distorsionar
-// los ángulos por la relación de aspecto del video.
-//
-// medialSign: +1 si el centro del cuerpo está hacia +x respecto a la cadera
-//             de esa pierna, -1 si está hacia -x. Así "medial" se define con
-//             la línea media pélvica y NO depende del efecto espejo.
-//
-// FPPA (°) = inclinación medial del muslo − inclinación medial de la pierna
-//   > 0  -> rodilla desplazada medialmente respecto a la línea cadera-tobillo (VALGO)
-//   < 0  -> rodilla desplazada lateralmente (VARO)
-// ---------------------------------------------------------------------
 function signedFPPA(hip, knee, ankle, medialSign) {
   const tx = (knee.x - hip.x) * medialSign;
   const ty = knee.y - hip.y;
@@ -150,7 +190,7 @@ function signedFPPA(hip, knee, ankle, medialSign) {
 }
 
 function calculateKneeKinematics(hipL, kneeL, ankleL, hipR, kneeR, ankleR) {
-  if (Math.abs(hipL.x - hipR.x) < 1) return null; // cadera no resuelta
+  if (Math.abs(hipL.x - hipR.x) < 1) return null;
 
   const midX = (hipL.x + hipR.x) / 2;
   const mL = Math.sign(midX - hipL.x) || 1;
@@ -167,7 +207,7 @@ function calculateKneeKinematics(hipL, kneeL, ankleL, hipR, kneeR, ankleR) {
 }
 
 // ---------------------------------------------------------------------
-// Procesamiento de cada cuadro
+// Procesamiento cuadro por cuadro
 // ---------------------------------------------------------------------
 function onResults(results) {
   frameCount++;
@@ -193,14 +233,12 @@ function onResults(results) {
   const h = canvasElement.height;
   const lm = results.poseLandmarks;
 
-  // Se exige buena visibilidad en los 6 puntos (cadera, rodilla, tobillo x2)
   const needed = [23, 24, 25, 26, 27, 28];
   if (needed.some(i => (lm[i].visibility ?? 1) < MIN_VISIBILITY)) {
     canvasCtx.restore();
     return;
   }
 
-  // Puntos en píxeles
   const px = (p) => ({ x: p.x * w, y: p.y * h });
   const lHip = px(lm[23]), rHip = px(lm[24]);
   const lKnee = px(lm[25]), rKnee = px(lm[26]);
@@ -235,7 +273,7 @@ function onResults(results) {
     return;
   }
 
-  // Filtro EMA sobre el ángulo CON SIGNO (inicializado con el primer valor)
+  // Filtrado EMA
   smoothL = smoothL === null ? kin.left : (EMA_ALPHA * kin.left + (1 - EMA_ALPHA) * smoothL);
   smoothR = smoothR === null ? kin.right : (EMA_ALPHA * kin.right + (1 - EMA_ALPHA) * smoothR);
 
@@ -248,19 +286,27 @@ function onResults(results) {
   updateBadge('badge-right', smoothR);
   document.getElementById('ratio-val').innerText = `${kin.ratio}%`;
 
+  // Actualización de la gráfica con etiqueta en eje X si corresponde
   chart.data.datasets[0].data.shift();
   chart.data.datasets[0].data.push(parseFloat(smoothL.toFixed(1)));
   chart.data.datasets[1].data.shift();
   chart.data.datasets[1].data.push(parseFloat(smoothR.toFixed(1)));
+
+  chart.data.labels.shift();
+  if (pendingRepLabel) {
+    chart.data.labels.push(pendingRepLabel);
+    pendingRepLabel = null; // consumida
+  } else {
+    chart.data.labels.push('');
+  }
   chart.update('none');
 
-  // Altura de cadera y largo de pierna (normalización por tamaño del sujeto)
+  // Normalización corporal
   const hipMidY = (lHip.y + rHip.y) / 2;
   const ankleMidY = (lAnkle.y + rAnkle.y) / 2;
   const legLen = ankleMidY - hipMidY;
 
   if (legLen > 1) {
-    // --- Referencia en bipedestación (cuenta regresiva + espera) ---
     if (evalState === 'COUNTDOWN' || evalState === 'WAIT_DESCENT') {
       const dropNow = baseline ? (hipMidY - baseline.hipY) / baseline.legLen : 0;
       if (!baseline || dropNow < DESCENT_START * 0.5) {
@@ -277,17 +323,17 @@ function onResults(results) {
         }
       }
 
-      // --- Detección del inicio del descenso ---
+      // Inicio del descenso: marcar repetición en el eje X
       if (evalState === 'WAIT_DESCENT' && baseline && dropNow > DESCENT_START) {
         evalState = 'RECORDING';
         recSamples = [];
         maxDrop = 0;
         recStart = now;
-        showNotice('¡Descendiendo! Controla las rodillas...');
+        pendingRepLabel = `Rep ${repCount + 1}`;
+        showNotice(`¡Descendiendo (Rep ${repCount + 1})! Controla las rodillas...`);
       }
     }
 
-    // --- Registro durante la repetición ---
     if (evalState === 'RECORDING' && baseline) {
       const drop = (hipMidY - baseline.hipY) / baseline.legLen;
       recSamples.push({ drop, fL: smoothL, fR: smoothR, ratio: kin.ratio });
@@ -299,7 +345,6 @@ function onResults(results) {
       if (returned || (timedOut && maxDrop >= MIN_DEPTH && recSamples.length >= 10)) {
         finishEvaluation();
       } else if (timedOut) {
-        // No hubo una sentadilla suficientemente profunda: volver a esperar
         evalState = 'WAIT_DESCENT';
         recSamples = [];
         maxDrop = 0;
@@ -312,11 +357,10 @@ function onResults(results) {
 }
 
 // ---------------------------------------------------------------------
-// Resultados de la repetición
+// Cálculos de repetición y resumen
 // ---------------------------------------------------------------------
 function computeResults(samples) {
   const maxD = Math.max(...samples.map(s => s.drop));
-  // Solo la fase profunda de la sentadilla (cerca del nadir)
   let win = samples.filter(s => s.drop >= DEEP_PHASE * maxD);
   if (win.length < 3) win = samples;
 
@@ -325,7 +369,7 @@ function computeResults(samples) {
   const ra = medianFilter(win.map(s => s.ratio), MEDIAN_WINDOW);
 
   return {
-    peakL: Math.max(0, Math.max(...fL)),  // solo valgo (varo no suma)
+    peakL: Math.max(0, Math.max(...fL)),
     peakR: Math.max(0, Math.max(...fR)),
     minRatio: Math.round(Math.min(...ra))
   };
@@ -341,7 +385,6 @@ function stdDev(arr) {
   return Math.sqrt(arr.reduce((acc, v) => acc + (v - m) ** 2, 0) / (arr.length - 1));
 }
 
-// Categoría de riesgo de una medición (usada en la tabla y en el informe)
 function riskCategoryOf(maxL, maxR, minRatio) {
   const maxPeak = Math.max(maxL, maxR);
   const valgusConfirmed = maxPeak >= TYPE_DEADBAND;
@@ -365,7 +408,6 @@ function finishEvaluation() {
   maxDrop = 0;
 
   if (repCount < REPS_PER_SET) {
-    // Faltan repeticiones: seguir esperando el siguiente descenso
     evalState = 'WAIT_DESCENT';
     btnReset.style.display = 'inline-block';
     showNotice(`Repetición ${repCount}/${REPS_PER_SET} ✅ — vuelve a bajar`);
@@ -373,7 +415,6 @@ function finishEvaluation() {
     return;
   }
 
-  // Set completo: promediar y generar informe
   evalState = 'FINISHED';
   showNotice(`¡Evaluación completa (${REPS_PER_SET} repeticiones)! ✅`);
   btnReset.style.display = 'inline-block';
@@ -394,7 +435,6 @@ function showNotice(text) {
   countdownEl.innerText = text;
 }
 
-// s = FPPA con signo (+ valgo / − varo)
 function updateBadge(id, s) {
   const el = document.getElementById(id);
   if (s <= -FPPA_MODERATE) {
@@ -447,7 +487,6 @@ function renderIntegratedReport(maxL, maxR, minRatio, stats) {
   }
 
   const maxPeak = Math.max(maxL, maxR);
-  // El ratio K/A solo escala el riesgo si hay valgo angular que lo confirme
   const valgusConfirmed = maxPeak >= TYPE_DEADBAND;
 
   const riskBanner = document.getElementById('risk-banner');
@@ -529,7 +568,7 @@ function renderIntegratedReport(maxL, maxR, minRatio, stats) {
 }
 
 // ---------------------------------------------------------------------
-// Controles
+// Controles y Reinicio
 // ---------------------------------------------------------------------
 function resetEvaluationData() {
   baselineBuf = [];
@@ -540,10 +579,16 @@ function resetEvaluationData() {
   smoothR = null;
   setResults = [];
   repCount = 0;
+  pendingRepLabel = null;
   document.getElementById('reps-table').querySelector('tbody').innerHTML = '';
+
+  // Limpiar curva cinemática
+  chart.data.labels = Array(BUFFER_SIZE).fill('');
+  chart.data.datasets[0].data = Array(BUFFER_SIZE).fill(0);
+  chart.data.datasets[1].data = Array(BUFFER_SIZE).fill(0);
+  chart.update();
 }
 
-// 1. "Evaluar 1 Sentadilla" -> modal de instrucciones
 btnSingleSquat.addEventListener('click', () => {
   if (!cameraInstance) {
     alert('Primero debes presionar "Iniciar Cámara".');
@@ -553,7 +598,6 @@ btnSingleSquat.addEventListener('click', () => {
   speakFeedback('Revisa las instrucciones en pantalla antes de iniciar.');
 });
 
-// 2. Confirmar -> cuenta regresiva (se mide la referencia en bipedestación)
 btnConfirmProtocol.addEventListener('click', () => {
   protocolModal.style.display = 'none';
   speakFeedback('Prepárate. Brazos al pecho y pies al ancho de hombros.');
@@ -573,7 +617,7 @@ btnConfirmProtocol.addEventListener('click', () => {
       clearInterval(timer);
       countdownEl.innerText = '¡BAJA!';
       speakFeedback('Baja');
-      evalState = 'WAIT_DESCENT'; // la detección del descenso parte al decir "Baja"
+      evalState = 'WAIT_DESCENT';
       setTimeout(() => {
         if (evalState === 'WAIT_DESCENT') countdownEl.innerText = `Realiza ${REPS_PER_SET} sentadillas seguidas...`;
       }, 1200);
@@ -585,7 +629,6 @@ btnCloseModal.addEventListener('click', () => {
   protocolModal.style.display = 'none';
 });
 
-// Nueva evaluación
 btnReset.addEventListener('click', () => {
   evalState = 'IDLE';
   resetEvaluationData();
@@ -598,7 +641,7 @@ btnReset.addEventListener('click', () => {
 });
 
 // ---------------------------------------------------------------------
-// MediaPipe
+// MediaPipe Pose
 // ---------------------------------------------------------------------
 const pose = new Pose({
   locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
@@ -624,9 +667,7 @@ document.getElementById('btn-toggle-cam').addEventListener('click', async () => 
   }
 });
 
-// ---------------------------------------------------------------------
-// Textos de la interfaz acordes al protocolo de varias repeticiones
-// ---------------------------------------------------------------------
+// Ajuste dinámico de textos
 btnSingleSquat.innerText = `🎯 Evaluar ${REPS_PER_SET} Sentadillas`;
 reportPlaceholder.innerHTML = `Presione <strong>"🎯 Evaluar ${REPS_PER_SET} Sentadillas"</strong>, siga las instrucciones de posicionamiento en pantalla y realice ${REPS_PER_SET} sentadillas seguidas para obtener el promedio, la variabilidad y las sugerencias kinesiológicas.`;
 const protocolItems = document.querySelectorAll('.protocol-item');
